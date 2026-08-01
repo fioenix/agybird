@@ -113,6 +113,40 @@ export function validateRequest(options) {
   return options;
 }
 
+const READ_ONLY_POLICY = 'Do not create, edit, move, or delete files. Work read-only and cite concrete evidence for conclusions.';
+
+export function buildDelegationPrompt(options, userPrompt) {
+  const common = [
+    'You are working through Agybird with the official Antigravity CLI.',
+    'Follow the user task and the current Antigravity permission policy. Do not weaken permissions, expose credentials, or access unrelated data.',
+  ];
+
+  if (options.category === 'code') {
+    if (options.mode === 'read') {
+      common.push(READ_ONLY_POLICY);
+    } else {
+      common.push('Make only changes required by the user task. Preserve unrelated work and repository conventions.');
+      common.push('Run the smallest relevant tests. Summarize changed files and verification results.');
+    }
+  } else if (options.category === 'image') {
+    common.push('Use the built-in `generate_image` tool. Choose a clear ImageName and return every generated artifact path.');
+    if (options.references.length > 0) {
+      common.push(`Edit the supplied reference image using ImagePaths exactly as provided: ${JSON.stringify(options.references)}`);
+    } else {
+      common.push('Generate a new image from the user task; no reference image was supplied.');
+    }
+  } else if (options.mode === 'read') {
+    common.push(READ_ONLY_POLICY);
+  } else {
+    common.push('Create or edit only the deliverables requested by the user task. Preserve unrelated files.');
+  }
+
+  common.push('<agybird_user_task>');
+  common.push(userPrompt);
+  common.push('</agybird_user_task>');
+  return common.join('\n');
+}
+
 export async function main() {
   throw new Error('Runner execution is not implemented yet');
 }
