@@ -130,6 +130,10 @@ node scripts/agybird.mjs \
   [--reference <absolute-image-path>]... \
   [--json-schema <schema-or-file>] \
   [--conversation <id>] \
+  [--model <agy-model-slug>] \
+  [--effort low|medium|high] \
+  [--agent <agy-agent-name>] \
+  [--sandbox] \
   [--timeout <duration>]
 ```
 
@@ -139,7 +143,7 @@ The prompt is read from standard input. The runner does not construct a shell co
 agy -p <prompt> --output-format stream-json --print-timeout <duration>
 ```
 
-It does not pin a reasoning model unless the user explicitly names one. Nano Banana 2 is an Antigravity auxiliary model behind `generate_image`, not a selectable `agy models` entry.
+It does not pin a reasoning model, effort, agent, or sandbox override unless the user explicitly requests one. Nano Banana 2 is an Antigravity auxiliary model behind `generate_image`, not a selectable `agy models` entry.
 
 ### 7.1 Stable result envelope
 
