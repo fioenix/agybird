@@ -1,0 +1,17 @@
+{
+  "name": "agybird",
+  "version": "0.1.0",
+  "description": "Agent Skill bridge for the official Google Antigravity CLI",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test",
+    "test:unit": "node --test tests/unit",
+    "test:integration": "node --test tests/integration",
+    "check": "node scripts/check.mjs"
+  },
+  "license": "MIT"
+}
