@@ -1,0 +1,3 @@
+{"type":"init","conversation_id":"conv-malformed"}
+this is not json
+{"type":"result","status":"success","response":"Recovered."}

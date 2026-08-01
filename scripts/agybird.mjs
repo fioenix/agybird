@@ -171,6 +171,152 @@ export function buildAgyArgs(options, delegatedPrompt) {
   return args;
 }
 
+function firstDefined(...values) {
+  return values.find((value) => value !== undefined && value !== null);
+}
+
+function normalizeToolEvent(event) {
+  const step = firstDefined(event.step, event.data?.step, event.update, event);
+  const name = firstDefined(step.tool_name, step.toolName, step.name, event.tool_name, event.toolName);
+  const kind = firstDefined(step.type, event.subtype, event.event_type);
+  if (!name && kind !== 'tool' && !String(event.type).includes('tool')) return null;
+  return {
+    id: String(firstDefined(step.id, step.step_id, event.step_id, event.id, name, 'tool')),
+    name: String(firstDefined(name, 'unknown')),
+    status: String(firstDefined(step.status, event.status, event.subtype, 'unknown')).toLowerCase(),
+    arguments: firstDefined(step.arguments, step.input, event.arguments, event.input),
+    result: firstDefined(step.result, step.output, event.result, event.output),
+    error: firstDefined(step.error, event.error),
+  };
+}
+
+function mergeToolCall(toolCalls, update) {
+  const existing = toolCalls.get(update.id) ?? { id: update.id, name: update.name, status: update.status };
+  for (const [key, value] of Object.entries(update)) {
+    if (value !== undefined) existing[key] = value;
+  }
+  toolCalls.set(update.id, existing);
+}
+
+export function createStreamParser() {
+  let buffer = '';
+  let lineNumber = 0;
+  const state = {
+    conversationId: null,
+    response: null,
+    toolCalls: new Map(),
+    artifacts: [],
+    warnings: [],
+    usage: null,
+    sawTerminalResult: false,
+    agyStatus: null,
+  };
+
+  function processLine(line) {
+    lineNumber += 1;
+    if (!line.trim()) return;
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      state.warnings.push(`Malformed stream event at line ${lineNumber}`);
+      return;
+    }
+
+    state.conversationId = firstDefined(
+      event.conversation_id,
+      event.conversationId,
+      event.session_id,
+      event.sessionId,
+      state.conversationId,
+    );
+
+    const toolUpdate = normalizeToolEvent(event);
+    if (toolUpdate) mergeToolCall(state.toolCalls, toolUpdate);
+
+    if (event.type === 'result') {
+      state.sawTerminalResult = true;
+      state.agyStatus = String(firstDefined(event.status, event.subtype, event.is_error ? 'error' : 'success'));
+      state.response = firstDefined(event.response, event.result, event.message, event.content, state.response);
+      state.usage = firstDefined(event.usage, event.stats, state.usage);
+      const eventArtifacts = firstDefined(event.artifacts, event.files);
+      if (Array.isArray(eventArtifacts)) state.artifacts.push(...eventArtifacts);
+    }
+  }
+
+  return {
+    push(chunk) {
+      buffer += String(chunk);
+      let newlineIndex;
+      while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, newlineIndex).replace(/\r$/, '');
+        buffer = buffer.slice(newlineIndex + 1);
+        processLine(line);
+      }
+    },
+    finish() {
+      if (buffer.length > 0) processLine(buffer.replace(/\r$/, ''));
+      buffer = '';
+      return {
+        ...state,
+        toolCalls: [...state.toolCalls.values()],
+      };
+    },
+  };
+}
+
+const PERMISSION_DENIAL = /permission(?:s)? (?:denied|declined|required)|not (?:executed|allowed|permitted)|user (?:denied|declined|rejected)|approval (?:denied|required)/i;
+const FAILED_TOOL_STATUS = new Set(['error', 'failed', 'failure', 'denied', 'blocked', 'cancelled', 'canceled']);
+
+export function classifyOutcome({ parsed, exitCode, stderr }) {
+  const warnings = [...parsed.warnings];
+  const toolErrors = parsed.toolCalls.filter((tool) => FAILED_TOOL_STATUS.has(tool.status) || tool.error);
+  const permissionText = [
+    stderr,
+    ...toolErrors.flatMap((tool) => [tool.status, tool.error]).filter(Boolean),
+  ].join('\n');
+
+  if (PERMISSION_DENIAL.test(permissionText)) {
+    warnings.push('Antigravity permission policy blocked at least one requested action.');
+    return { status: 'blocked', warnings };
+  }
+  if (exitCode !== 0) {
+    warnings.push(`agy exited with code ${exitCode}`);
+    return { status: 'error', warnings };
+  }
+  if (!parsed.sawTerminalResult) {
+    warnings.push('Antigravity stream ended without a terminal result event.');
+    return { status: 'error', warnings };
+  }
+  if (/error|failed|failure/i.test(parsed.agyStatus ?? '')) {
+    warnings.push(`Antigravity reported terminal status: ${parsed.agyStatus}`);
+    return { status: 'error', warnings };
+  }
+  if (toolErrors.length > 0) {
+    warnings.push(`${toolErrors.length} Antigravity tool call(s) did not complete successfully.`);
+    return { status: 'partial', warnings };
+  }
+  return { status: 'success', warnings };
+}
+
+export function makeEnvelope({ category, parsed, outcome, exitCode, artifacts = parsed.artifacts }) {
+  return {
+    schema_version: 1,
+    status: outcome.status,
+    category,
+    conversation_id: parsed.conversationId,
+    response: parsed.response,
+    tool_calls: parsed.toolCalls.map(({ error, ...tool }) => error === undefined ? tool : { ...tool, error }),
+    artifacts,
+    warnings: outcome.warnings,
+    usage: parsed.usage,
+    evidence: {
+      agy_exit_code: exitCode,
+      agy_status: parsed.agyStatus,
+    },
+  };
+}
+
 export async function main() {
   throw new Error('Runner execution is not implemented yet');
 }

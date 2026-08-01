@@ -1,0 +1,4 @@
+{"type":"init","conversation_id":"conv-success","model":"gemini-test"}
+{"type":"step_update","step":{"id":"tool-1","type":"tool","tool_name":"read_file","status":"running","arguments":{"path":"README.md"}}}
+{"type":"step_update","step":{"id":"tool-1","type":"tool","tool_name":"read_file","status":"completed","result":{"path":"README.md"}}}
+{"type":"result","status":"success","response":"Inspection complete.","usage":{"input_tokens":12,"output_tokens":4}}
