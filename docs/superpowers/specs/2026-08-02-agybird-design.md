@@ -1,0 +1,339 @@
+# Agybird Design
+
+Date: 2026-08-02  
+Status: Approved for specification review  
+Repository: `fioenix/agybird`  
+License: MIT
+
+## 1. Purpose
+
+Agybird is an open-source Agent Skill that lets Claude Code and Codex delegate work to the official Google Antigravity CLI (`agy`) through its documented headless interface. It makes three categories straightforward and consistent:
+
+1. Code work: exploration, review, implementation, debugging, and verification.
+2. Image work: image generation and image editing through Antigravity's built-in `generate_image` tool, backed by Nano Banana 2.
+3. General work: research, analysis, planning, writing, and structured output.
+
+The skill is designed for a user who already has, or elects to install, the official `agy` binary and wants Antigravity subscription quota to remain managed by Antigravity itself.
+
+## 2. Goals
+
+- Provide one discoverable Agent Skill compatible with Claude Code and Codex.
+- Trigger only when the user explicitly requests `agy`, Antigravity, or use of the Antigravity subscription.
+- Use only the public, documented `agy` CLI surface.
+- Make headless execution reliable across macOS, Linux, and Windows.
+- Normalize output, tool-call evidence, artifacts, warnings, status, and usage into one stable result envelope.
+- Preserve the user's existing Antigravity permissions, sandbox, model, quota, and credit settings.
+- Verify delegated results independently before Claude Code or Codex reports completion.
+- Ship as a public repository with open-source documentation, security policy, automated checks, and reproducible tests.
+
+## 3. Non-goals
+
+- Agybird is not a replacement for Antigravity CLI.
+- It does not call Google APIs or private Antigravity endpoints directly.
+- It does not read, copy, export, cache, or refresh Antigravity OAuth credentials.
+- It does not bypass Antigravity permissions, quota, credits, safety checks, or sandboxing.
+- It does not automatically delegate ordinary work when the user has not explicitly requested Antigravity.
+- It is not an npm-hosted API client or a remote generation service.
+- It does not promise that subscription entitlements, model availability, or CLI schemas will remain unchanged.
+
+## 4. Product decisions
+
+The following decisions were confirmed during brainstorming:
+
+| Area | Decision |
+|---|---|
+| Project name | `agybird` |
+| License | MIT |
+| Repository visibility | Create private; switch to public only after audit and live tests pass |
+| Primary installation | `npx skills add fioenix/agybird` |
+| Missing `agy` | Ask for confirmation, then run the official installer |
+| Trigger policy | Explicit mention of `agy`, Antigravity, or subscription usage |
+| File mutation | Match user intent: read-only requests remain read-only; implementation requests may edit the workspace |
+| Sandbox | Respect the user's existing Antigravity configuration; do not override it |
+| Permissions | Respect existing Antigravity policies; never use `--dangerously-skip-permissions` |
+| Credits | Preserve `useG1Credits`; if quota blocks work, report and ask before any change |
+| Secret handling | Rely on Antigravity's configured permission boundary; do not add a separate workspace secret scanner |
+| Supported OS | macOS, Linux, and Windows |
+| Live tests | General structured output, code edit plus test, image generation, and reference-image editing |
+
+## 5. Architecture
+
+The repository contains a single routing skill and a thin, dependency-free Node.js runner:
+
+```text
+agybird/
+├── SKILL.md
+├── scripts/
+│   └── agybird.mjs
+├── references/
+│   ├── common.md
+│   ├── code.md
+│   ├── image.md
+│   ├── general.md
+│   ├── security.md
+│   └── troubleshooting.md
+├── tests/
+│   ├── fixtures/
+│   │   └── fake-agy.mjs
+│   ├── unit/
+│   └── integration/
+├── docs/
+│   ├── threat-model.md
+│   └── superpowers/specs/
+├── .github/
+│   └── workflows/
+├── README.md
+├── SECURITY.md
+├── CONTRIBUTING.md
+├── CODE_OF_CONDUCT.md
+├── CHANGELOG.md
+├── LICENSE
+└── package.json
+```
+
+The Node runner exists to avoid shell interpolation, normalize Antigravity's NDJSON stream, detect soft-denied tools, and verify returned artifacts. It uses Node's standard library only. The package is marked `private: true` to prevent accidental npm publication.
+
+### 5.1 Data flow
+
+```text
+Explicit user request
+  -> Claude Code or Codex activates SKILL.md
+  -> skill selects code, image, or general workflow
+  -> caller passes the prompt to agybird over stdin
+  -> agybird spawns the official agy binary with an argv array
+  -> agy executes in the selected workspace using cached official credentials
+  -> agybird parses stream-json events
+  -> agybird verifies terminal status, tool results, and artifacts
+  -> caller independently reviews diff, tests, or media
+  -> caller reports the evidence-backed result
+```
+
+## 6. Skill activation and routing
+
+The frontmatter description must be narrow enough that installing Agybird globally does not hijack normal coding or general requests. It activates when the user explicitly:
+
+- asks to use `agy` or Antigravity;
+- asks to use Antigravity/Google AI subscription quota through the official CLI;
+- asks to continue an existing Agybird-delegated task.
+
+After activation, `SKILL.md` classifies the task into exactly one primary category. A mixed task is split into ordered calls, with only the relevant reference file loaded for each call.
+
+## 7. Runner interface
+
+The runner is invoked as:
+
+```text
+node scripts/agybird.mjs \
+  --category code|image|general \
+  --cwd <workspace> \
+  [--mode read|write] \
+  [--reference <absolute-image-path>]... \
+  [--json-schema <schema-or-file>] \
+  [--conversation <id>] \
+  [--timeout <duration>]
+```
+
+The prompt is read from standard input. The runner does not construct a shell command and does not evaluate prompt content. It resolves `agy` through the current `PATH`, executes it with `spawn`, and passes explicit arguments:
+
+```text
+agy -p <prompt> --output-format stream-json --print-timeout <duration>
+```
+
+It does not pin a reasoning model unless the user explicitly names one. Nano Banana 2 is an Antigravity auxiliary model behind `generate_image`, not a selectable `agy models` entry.
+
+### 7.1 Stable result envelope
+
+The runner writes one JSON object after completion:
+
+```json
+{
+  "schema_version": 1,
+  "status": "success",
+  "category": "image",
+  "conversation_id": "example-id",
+  "response": "Generated the requested image.",
+  "tool_calls": [],
+  "artifacts": [],
+  "warnings": [],
+  "usage": {},
+  "evidence": {
+    "agy_exit_code": 0,
+    "agy_status": "SUCCESS"
+  }
+}
+```
+
+Allowed Agybird statuses are:
+
+- `success`: Antigravity completed and category-specific evidence is present.
+- `partial`: Antigravity produced a response, but a requested tool, test, edit, or artifact is missing.
+- `blocked`: authentication, permission, quota, or required user input prevented the requested outcome.
+- `error`: invalid arguments, malformed output, timeout, process failure, or Antigravity terminal error.
+
+An `agy` process exit code of zero is necessary but not sufficient. Headless permission soft-denials can exit zero, so the runner also inspects status, standard error, tool events, and category-specific evidence.
+
+## 8. Category contracts
+
+### 8.1 Code
+
+`read` mode covers exploration, explanation, review, diagnosis, and planning. The delegated prompt explicitly prohibits file changes.
+
+`write` mode covers implementation, bug fixes, refactors, and requested document changes. The delegated prompt instructs Antigravity to:
+
+- read applicable `AGENTS.md` and `GEMINI.md` files;
+- inspect before editing;
+- keep changes scoped to the request;
+- run the smallest relevant verification;
+- report exact files and commands used.
+
+After Agybird returns, Claude Code or Codex must independently inspect the actual workspace, including `git diff` and relevant untracked files, and rerun the most important verification. Antigravity's prose report is never sufficient proof of completion.
+
+### 8.2 Image
+
+The image prompt explicitly requires Antigravity's built-in `generate_image` tool.
+
+Generation requires:
+
+- a concrete visual prompt;
+- an explicit image name;
+- a default timeout of 15 minutes.
+
+Editing additionally requires one or more existing absolute `ImagePaths`. Before invoking Antigravity, Agybird validates that each reference exists and is a regular file. It does not decode or transform reference images.
+
+Image success requires all of the following:
+
+- a completed `generate_image` tool event;
+- no tool error;
+- at least one returned artifact path;
+- a file that exists and has a supported image extension and non-zero size.
+
+Claude Code or Codex then opens the image for visual inspection. A tool success without a viewable file is `partial`, not `success`.
+
+### 8.3 General work
+
+General work covers research, analysis, comparison, planning, summarization, drafting, and structured responses. It defaults to `read` mode. `write` is used only when the user explicitly requests a file deliverable.
+
+When machine-readable output is requested, Agybird forwards a JSON Schema to Antigravity and validates that the terminal result contains structured output matching the requested mode. General success requires a terminal response or valid structured output, depending on the request.
+
+## 9. Authentication, installation, permissions, and credits
+
+### 9.1 Installation
+
+If `agy` is missing, Agybird reports the condition and asks the user for confirmation. Only after confirmation may Claude Code or Codex run Google's official platform installer. The skill must not embed or mirror Antigravity binaries.
+
+### 9.2 Authentication
+
+Headless mode uses cached official credentials. If authentication is unavailable, Agybird asks the user to launch `agy` interactively and complete Google's sign-in flow. It never opens, parses, copies, or modifies keyring entries or OAuth token files.
+
+### 9.3 Permissions and sandbox
+
+Agybird preserves the user's current Antigravity settings. It does not pass `--sandbox` unless the user explicitly asks for a one-run override, and it never passes `--dangerously-skip-permissions`. A permission soft-denial is surfaced as `partial` or `blocked` with the relevant tool name.
+
+### 9.4 Credits
+
+Agybird does not modify `useG1Credits`. If baseline quota is exhausted, it reports the quota state and asks before any configuration change. Tests record whether baseline quota or credits were used only when Antigravity exposes that information; they do not infer billing state.
+
+## 10. Security model
+
+The trust boundary is the official `agy` executable selected by the user's `PATH`. Agybird does not independently authenticate the binary or contact Antigravity services.
+
+Primary threats and controls:
+
+| Threat | Control |
+|---|---|
+| Prompt interpreted by a shell | Pass prompt as a discrete argv value through `spawn`; never use `exec` or `shell: true` |
+| Credential theft | Never inspect keyrings, token caches, credential files, or private endpoints |
+| Permission bypass | Preserve current policy; prohibit `--dangerously-skip-permissions` |
+| Silent tool denial | Parse stderr and tool events; do not trust exit code alone |
+| Artifact path spoofing | Resolve paths, require regular files, and reject missing or zero-byte artifacts |
+| Arbitrary workspace mutation | Category plus `read`/`write` contract follows explicit user intent |
+| Unbounded execution | Category-specific timeouts and child-process termination |
+| Malicious fake `agy` in PATH | Report the resolved binary path and version in diagnostics; document that users control PATH trust |
+| Secret leakage in logs | Do not persist prompts, environment variables, raw media, or full transcripts in test reports |
+| Supply-chain compromise | Zero runtime dependencies; lock development dependencies; pin GitHub Actions by full commit SHA |
+
+The public documentation states that Agybird is an unofficial community project and that users remain responsible for compliance with Antigravity's current terms. The integration calls the official documented CLI and does not reuse OAuth credentials outside it, but the repository does not claim Google endorsement or a legal safe harbor.
+
+## 11. Testing strategy
+
+### 11.1 Unit and contract tests
+
+A fake `agy` fixture emits deterministic text, JSON, NDJSON, tool events, warnings, malformed lines, soft-denials, timeouts, artifact outputs, and non-zero exits. Tests cover:
+
+- argument parsing and platform-neutral process spawning;
+- prompt transfer without shell evaluation;
+- final result extraction;
+- soft-denial detection despite exit zero;
+- malformed NDJSON handling;
+- timeout and child termination;
+- conversation forwarding;
+- missing binary and authentication errors;
+- image reference validation;
+- artifact existence and size checks;
+- stable result-envelope schema;
+- prohibition of dangerous permission flags.
+
+### 11.2 CI matrix
+
+GitHub Actions runs supported Node LTS versions on Ubuntu, macOS, and Windows. Required checks include formatting/linting, unit tests, package/skill validation, license checks, and security-oriented static checks. Actions are pinned by full SHA. CI never receives Antigravity credentials and never runs paid live generations.
+
+### 11.3 Live macOS integration tests
+
+Live tests run locally with the authenticated official `agy` binary and real subscription quota:
+
+1. General: return structured JSON matching a schema.
+2. Code: modify a disposable Git repository and pass its targeted test.
+3. Image generation: create a new image and verify the tool event, file, and visual output.
+4. Image editing: use the generated image as a reference, create a visibly changed result, and inspect it.
+
+Live test reports record CLI version, operating system, category, terminal status, duration, sanitized evidence, artifact metadata, and verification outcome. They exclude tokens, credentials, prompt bodies, raw transcripts, and private filesystem details.
+
+## 12. Open-source repository and release
+
+The repository is created under `fioenix/agybird` as private immediately after design approval. The initial commit contains this design specification. Implementation proceeds on `main` while private.
+
+Before public release, the repository must contain:
+
+- MIT license;
+- complete README with quickstart for Claude Code and Codex;
+- compatibility and limitations documentation;
+- `SECURITY.md` using GitHub private vulnerability reporting;
+- contributing guide and code of conduct;
+- threat model;
+- changelog;
+- pinned CI workflows;
+- passing cross-platform tests;
+- sanitized live integration evidence;
+- installation verification through `npx skills add` and manual installation paths.
+
+After all gates pass, the repository is switched to public and tagged `v0.1.0`. A GitHub Release summarizes supported workflows, verified environments, limitations, and security boundaries.
+
+## 13. Acceptance criteria
+
+Agybird is complete only when current evidence proves all of the following:
+
+- The local repository exists at `/Users/fioenix/Projects/agybird`.
+- The GitHub repository `fioenix/agybird` exists and is public.
+- Claude Code and Codex can install the skill through the documented Agent Skills command.
+- Explicit triggers route correctly to code, image, or general behavior.
+- The runner uses the official `agy` binary without shell execution or credential access.
+- Permission, sandbox, and credit settings remain unchanged unless the user explicitly changes them.
+- Unit/contract tests pass on Ubuntu, macOS, and Windows CI.
+- Live macOS tests succeed for general structured output, code edit plus verification, image generation, and image editing.
+- Generated and edited images are visually inspected and retained as sanitized release evidence where appropriate.
+- Open-source and security documentation is complete.
+- No committed secret, token, credential, private prompt, or raw transcript is present.
+- Security review and final requirement-by-requirement audit pass.
+- Release `v0.1.0` exists and points to the audited commit.
+
+## 14. Authoritative references
+
+- Antigravity CLI overview: <https://antigravity.google/docs/cli/overview>
+- Installation and authentication: <https://antigravity.google/docs/cli/install>
+- Headless mode: <https://antigravity.google/docs/cli/headless>
+- Best practices: <https://antigravity.google/docs/cli/best-practices>
+- Artifacts: <https://antigravity.google/docs/cli/artifacts>
+- AI credits: <https://antigravity.google/docs/cli/credits>
+- Plugins and skills: <https://antigravity.google/docs/cli/plugins>
+- Sandbox: <https://antigravity.google/docs/cli/sandbox>
+- Terms: <https://antigravity.google/terms>
