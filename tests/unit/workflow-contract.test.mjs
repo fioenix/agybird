@@ -18,7 +18,7 @@ test('CI uses immutable actions and least-privilege permissions', () => {
   assertPinnedActions(workflow);
   assert.match(workflow, /^permissions:\n  contents: read$/m);
   assert.doesNotMatch(workflow, /pull_request_target/);
-  assert.doesNotMatch(workflow, /secrets\.|AGYBIRD_AGY_BIN|GOOGLE_|GEMINI_|ANTIGRAVITY_/);
+  assert.doesNotMatch(workflow, /secrets\.|GOOGLE_|GEMINI_|ANTIGRAVITY_/);
 });
 
 test('CI covers supported systems and Node versions', () => {

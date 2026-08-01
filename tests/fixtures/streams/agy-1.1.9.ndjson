@@ -1,0 +1,4 @@
+{"event":"init","conversation_id":"conv-live","init":{"cwd":"/workspace","permission_mode":"request-review"}}
+{"event":"step_update","step_update":{"conversation_id":"conv-live","step_index":0,"state":"DONE","step_type":"user_input"}}
+{"event":"step_update","step_update":{"conversation_id":"conv-live","step_index":1,"state":"DONE","step_type":"agent_response","text_delta":"READY\n","usage":{"total_tokens":24}}}
+{"event":"result","result":{"conversation_id":"conv-live","status":"SUCCESS","response":"READY\n","structured_output":{"summary":"READY","risks":[]},"duration_seconds":1.2,"num_turns":1,"usage":{"total_tokens":24}}}

@@ -140,10 +140,10 @@ node scripts/agybird.mjs \
 The prompt is read from standard input. The runner does not construct a shell command and does not evaluate prompt content. It resolves `agy` through the current `PATH`, executes it with `spawn`, and passes explicit arguments:
 
 ```text
-agy -p <prompt> --output-format stream-json --print-timeout <duration>
+agy -p <prompt> --mode <plan|accept-edits> --output-format stream-json --print-timeout <duration>
 ```
 
-It does not pin a reasoning model, effort, agent, or sandbox override unless the user explicitly requests one. Nano Banana 2 is an Antigravity auxiliary model behind `generate_image`, not a selectable `agy models` entry.
+The runner sets the child process working directory to `--cwd`, maps Agybird `read` to official `plan` mode and `write` to official `accept-edits` mode, and also states the authorized absolute workspace in the delegated prompt. It does not pin a reasoning model, effort, agent, or sandbox override unless the user explicitly requests one. Nano Banana 2 is an Antigravity auxiliary model behind `generate_image`, not a selectable `agy models` entry.
 
 ### 7.1 Stable result envelope
 

@@ -61,7 +61,7 @@ The skill chooses a category and invokes `scripts/agybird.mjs` with the prompt o
 - No shell execution inside the runner and zero runtime dependencies.
 - No `--dangerously-skip-permissions`.
 - No automatic change to `useG1Credits`, model, effort, agent, or sandbox.
-- Image success requires a completed tool event and a real nonempty artifact in the working directory.
+- Image success requires a completed tool event and a real nonempty artifact in the working directory or the matching Antigravity conversation artifact directory.
 
 See the [threat model](docs/threat-model.md), [security policy](SECURITY.md), and [official Antigravity overview](https://antigravity.google/docs/cli/overview).
 
@@ -73,6 +73,8 @@ npm run check
 ```
 
 Tests use a fake provider process and require no Google credentials. Live tests are manual and must never run in public CI.
+
+The optional live wrapper refuses to spend credits unless `AGYBIRD_LIVE_CONFIRM=1` is set for that invocation. It still preserves the current Antigravity model, sandbox, permissions, and `useG1Credits` setting.
 
 ## License
 

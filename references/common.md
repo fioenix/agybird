@@ -25,6 +25,8 @@ AGYBIRD_PROMPT_7F3A
 
 Optional runner flags are `--reference`, `--json-schema`, `--conversation`, `--model`, `--effort`, `--agent`, `--sandbox`, and `--timeout`. Supply `--model`, `--effort`, `--agent`, or `--sandbox` only when the user explicitly requests the corresponding override. Do not change or modify `useG1Credits`; if quota blocks the task, ask the user before changing any credit policy.
 
+The runner maps Agybird `read` to Antigravity's official `plan` execution mode and `write` to `accept-edits`. These modes express intent but do not override tool permission rules; a headless action that still needs confirmation remains `blocked`.
+
 Never pass `--dangerously-skip-permissions`. The runner itself never constructs a shell command.
 
 ## Interpret the result

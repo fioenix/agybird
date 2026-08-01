@@ -2,7 +2,8 @@
 
 import { spawn } from 'node:child_process';
 import { accessSync, constants, realpathSync, statSync } from 'node:fs';
-import { delimiter, extname, isAbsolute, relative, resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { delimiter, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const VALUE_OPTIONS = new Map([
@@ -121,13 +122,16 @@ export function buildDelegationPrompt(options, userPrompt) {
     'You are working through Agybird with the official Antigravity CLI.',
     'Follow the user task and the current Antigravity permission policy. Do not weaken permissions, expose credentials, or access unrelated data.',
   ];
+  if (options.cwd) {
+    common.push(`The authorized workspace is exactly: ${JSON.stringify(options.cwd)}. Resolve task paths inside it. Do not substitute an Antigravity scratch directory or another workspace.`);
+  }
 
   if (options.category === 'code') {
     if (options.mode === 'read') {
       common.push(READ_ONLY_POLICY);
     } else {
       common.push('Make only changes required by the user task. Preserve unrelated work and repository conventions.');
-      common.push('Run the smallest relevant tests. Summarize changed files and verification results.');
+      common.push('Run the smallest relevant tests when the current permission policy allows it; otherwise state that the caller must verify independently. Summarize changed files and verification results.');
     }
   } else if (options.category === 'image') {
     common.push('Use the built-in `generate_image` tool. Choose a clear ImageName and return every generated artifact path.');
@@ -151,6 +155,7 @@ export function buildDelegationPrompt(options, userPrompt) {
 export function buildAgyArgs(options, delegatedPrompt) {
   const args = [
     '-p', delegatedPrompt,
+    '--mode', options.mode === 'write' ? 'accept-edits' : 'plan',
     '--output-format', 'stream-json',
     '--print-timeout', options.timeout,
   ];
@@ -177,17 +182,40 @@ function firstDefined(...values) {
 }
 
 function normalizeToolEvent(event) {
-  const step = firstDefined(event.step, event.data?.step, event.update, event);
-  const name = firstDefined(step.tool_name, step.toolName, step.name, event.tool_name, event.toolName);
-  const kind = firstDefined(step.type, event.subtype, event.event_type);
-  if (!name && kind !== 'tool' && !String(event.type).includes('tool')) return null;
+  const step = firstDefined(event.step, event.step_update, event.data?.step, event.update, event);
+  const toolInfo = step.tool_info && typeof step.tool_info === 'object' ? step.tool_info : {};
+  const name = firstDefined(
+    step.tool_name,
+    step.toolName,
+    toolInfo.name,
+    step.name,
+    event.tool_name,
+    event.toolName,
+  );
+  const kind = firstDefined(step.type, step.step_type, event.subtype, event.event_type);
+  const eventName = firstDefined(event.type, event.event);
+  if (!name && kind !== 'tool' && !String(eventName).includes('tool')) return null;
   return {
-    id: String(firstDefined(step.id, step.step_id, event.step_id, event.id, name, 'tool')),
+    id: String(firstDefined(step.id, step.step_id, step.step_index, event.step_id, event.id, name, 'tool')),
     name: String(firstDefined(name, 'unknown')),
-    status: String(firstDefined(step.status, event.status, event.subtype, 'unknown')).toLowerCase(),
-    arguments: firstDefined(step.arguments, step.input, event.arguments, event.input),
-    result: firstDefined(step.result, step.output, event.result, event.output),
-    error: firstDefined(step.error, event.error),
+    status: String(firstDefined(step.status, step.state, event.status, event.subtype, 'unknown')).toLowerCase(),
+    arguments: firstDefined(
+      step.arguments,
+      step.input,
+      step.tool_input,
+      toolInfo.parameters,
+      event.arguments,
+      event.input,
+    ),
+    result: firstDefined(
+      step.result,
+      step.output,
+      step.tool_output,
+      toolInfo.output,
+      event.result,
+      event.output,
+    ),
+    error: firstDefined(step.error, toolInfo.error?.message, toolInfo.error, event.error),
   };
 }
 
@@ -205,6 +233,7 @@ export function createStreamParser() {
   const state = {
     conversationId: null,
     response: null,
+    structuredOutput: null,
     toolCalls: new Map(),
     artifacts: [],
     warnings: [],
@@ -224,23 +253,44 @@ export function createStreamParser() {
       return;
     }
 
+    const eventName = firstDefined(event.type, event.event);
+    const terminal = eventName === 'result' && event.result && typeof event.result === 'object'
+      ? event.result
+      : event;
+    const stepUpdate = event.step_update && typeof event.step_update === 'object'
+      ? event.step_update
+      : null;
+
     state.conversationId = firstDefined(
       event.conversation_id,
       event.conversationId,
       event.session_id,
       event.sessionId,
+      stepUpdate?.conversation_id,
+      terminal.conversation_id,
       state.conversationId,
     );
 
     const toolUpdate = normalizeToolEvent(event);
     if (toolUpdate) mergeToolCall(state.toolCalls, toolUpdate);
 
-    if (event.type === 'result') {
+    if (eventName === 'result') {
       state.sawTerminalResult = true;
-      state.agyStatus = String(firstDefined(event.status, event.subtype, event.is_error ? 'error' : 'success'));
-      state.response = firstDefined(event.response, event.result, event.message, event.content, state.response);
-      state.usage = firstDefined(event.usage, event.stats, state.usage);
-      const eventArtifacts = firstDefined(event.artifacts, event.files);
+      state.agyStatus = String(firstDefined(
+        terminal.status,
+        terminal.subtype,
+        terminal.is_error ? 'error' : 'success',
+      ));
+      state.structuredOutput = firstDefined(terminal.structured_output, terminal.structuredOutput, state.structuredOutput);
+      state.response = firstDefined(
+        state.structuredOutput,
+        terminal.response,
+        terminal.message,
+        terminal.content,
+        state.response,
+      );
+      state.usage = firstDefined(terminal.usage, terminal.stats, state.usage);
+      const eventArtifacts = firstDefined(terminal.artifacts, terminal.files);
       if (Array.isArray(eventArtifacts)) state.artifacts.push(...eventArtifacts);
     }
   }
@@ -266,7 +316,7 @@ export function createStreamParser() {
   };
 }
 
-const PERMISSION_DENIAL = /permission(?:s)? (?:denied|declined|required)|not (?:executed|allowed|permitted)|user (?:denied|declined|rejected)|approval (?:denied|required)/i;
+const PERMISSION_DENIAL = /permission(?:s)? (?:denied|declined|required)|denied permission|auto-denied|not (?:executed|allowed|permitted)|user (?:denied|declined|rejected)|approval (?:denied|required)/i;
 const FAILED_TOOL_STATUS = new Set(['error', 'failed', 'failure', 'denied', 'blocked', 'cancelled', 'canceled']);
 
 export function classifyOutcome({ parsed, exitCode, stderr }) {
@@ -315,7 +365,11 @@ export function makeEnvelope({
     category,
     conversation_id: parsed.conversationId,
     response: parsed.response,
-    tool_calls: parsed.toolCalls.map(({ error, ...tool }) => error === undefined ? tool : { ...tool, error }),
+    tool_calls: parsed.toolCalls.map((tool) => ({
+      id: tool.id,
+      name: tool.name,
+      status: tool.status,
+    })),
     artifacts,
     warnings: outcome.warnings,
     usage: parsed.usage,
@@ -345,20 +399,6 @@ function canExecute(path) {
 }
 
 export function resolveAgyBinary(env = process.env) {
-  if (env.NODE_ENV === 'test' && env.AGYBIRD_AGY_BIN) {
-    if (!isAbsolute(env.AGYBIRD_AGY_BIN)) {
-      throw new Error('AGYBIRD_AGY_BIN must be absolute in tests');
-    }
-    if (!statOrNull(env.AGYBIRD_AGY_BIN)?.isFile()) {
-      throw new Error('AGYBIRD_AGY_BIN does not point to a file');
-    }
-    return {
-      command: extname(env.AGYBIRD_AGY_BIN) === '.mjs' ? process.execPath : env.AGYBIRD_AGY_BIN,
-      prefixArgs: extname(env.AGYBIRD_AGY_BIN) === '.mjs' ? [env.AGYBIRD_AGY_BIN] : [],
-      displayPath: env.AGYBIRD_AGY_BIN,
-    };
-  }
-
   const pathEntries = String(env.PATH ?? '').split(delimiter).filter(Boolean);
   const extensions = process.platform === 'win32'
     ? String(env.PATHEXT ?? '.EXE;.CMD;.BAT;.COM').split(';')
@@ -480,9 +520,19 @@ function pathIsWithin(path, parent) {
   return pathRelative === '' || (!pathRelative.startsWith('..') && !isAbsolute(pathRelative));
 }
 
-export function verifyImageArtifacts(parsed, cwd) {
+function imagePathsFromText(value) {
+  if (typeof value !== 'string') return [];
+  return [...value.matchAll(/(?:[A-Za-z]:[\\/]|\/)[^`\n\r"'<>]*?\.(?:png|jpe?g|webp|gif)/gi)]
+    .map((match) => match[0]);
+}
+
+export function verifyImageArtifacts(
+  parsed,
+  cwd,
+  providerArtifactRoot = join(homedir(), '.gemini', 'antigravity-cli', 'brain'),
+) {
   const imageTools = parsed.toolCalls.filter((tool) => tool.name === 'generate_image');
-  const completed = imageTools.filter((tool) => ['completed', 'complete', 'success', 'succeeded'].includes(tool.status));
+  const completed = imageTools.filter((tool) => ['done', 'completed', 'complete', 'success', 'succeeded'].includes(tool.status));
   if (completed.length === 0) {
     return { artifacts: [], error: imageTools.length === 0 ? 'No generate_image tool call was observed.' : null };
   }
@@ -491,8 +541,16 @@ export function verifyImageArtifacts(parsed, cwd) {
   const candidates = new Set([
     ...parsed.artifacts.flatMap((artifact) => typeof artifact === 'string' ? [artifact] : collectArtifactPaths(artifact)),
     ...completed.flatMap((tool) => collectArtifactPaths(tool.result)),
+    ...imagePathsFromText(parsed.response),
   ]);
   const artifacts = [];
+  const permittedRoots = [canonicalCwd];
+  if (parsed.conversationId) {
+    const conversationRoot = resolve(providerArtifactRoot, parsed.conversationId);
+    if (statOrNull(conversationRoot)?.isDirectory()) {
+      permittedRoots.push(realpathSync(conversationRoot));
+    }
+  }
 
   for (const candidate of candidates) {
     const absolutePath = isAbsolute(candidate) ? candidate : resolve(cwd, candidate);
@@ -500,8 +558,10 @@ export function verifyImageArtifacts(parsed, cwd) {
     if (!artifactStat?.isFile() || artifactStat.size === 0) continue;
     if (!['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(extname(absolutePath).toLowerCase())) continue;
     const canonicalArtifact = realpathSync(absolutePath);
-    if (!pathIsWithin(canonicalArtifact, canonicalCwd)) continue;
-    artifacts.push({ path: canonicalArtifact, size: artifactStat.size });
+    if (!permittedRoots.some((root) => pathIsWithin(canonicalArtifact, root))) continue;
+    if (!artifacts.some((artifact) => artifact.path === canonicalArtifact)) {
+      artifacts.push({ path: canonicalArtifact, size: artifactStat.size });
+    }
   }
 
   return {

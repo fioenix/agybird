@@ -6,10 +6,14 @@ import { buildDelegationPrompt } from '../../scripts/agybird.mjs';
 const task = 'Inspect `src/main.js` and explain the failure.\nDo not guess.';
 
 test('preserves caller text in a delimited task body', () => {
-  const prompt = buildDelegationPrompt({ category: 'general', mode: 'read', references: [] }, task);
+  const prompt = buildDelegationPrompt({
+    category: 'general', mode: 'read', references: [], cwd: '/absolute/workspace',
+  }, task);
   assert.match(prompt, /<agybird_user_task>\n/);
   assert.match(prompt, /\n<\/agybird_user_task>$/);
   assert.ok(prompt.includes(task));
+  assert.match(prompt, /authorized workspace is exactly: "\/absolute\/workspace"/i);
+  assert.match(prompt, /Do not substitute.*scratch/i);
 });
 
 test('code read mode explicitly prohibits workspace writes', () => {

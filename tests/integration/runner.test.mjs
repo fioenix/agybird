@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -10,6 +10,15 @@ const testDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(testDirectory, '..', '..');
 const runnerPath = join(projectRoot, 'scripts', 'agybird.mjs');
 const fakeAgyPath = join(projectRoot, 'tests', 'fixtures', 'fake-agy.mjs');
+const fakeBin = mkdtempSync(join(tmpdir(), 'agybird-fake-bin-'));
+const fakeCommandPath = join(fakeBin, process.platform === 'win32' ? 'agy.cmd' : 'agy');
+
+if (process.platform === 'win32') {
+  writeFileSync(fakeCommandPath, `@"${process.execPath}" "${fakeAgyPath}" %*\r\n`);
+} else {
+  copyFileSync(fakeAgyPath, fakeCommandPath);
+  chmodSync(fakeCommandPath, 0o755);
+}
 
 function runRunner({ category = 'general', mode = 'read', prompt = 'CASE_SUCCESS', timeout = '5s', references = [] } = {}) {
   const cwd = mkdtempSync(join(tmpdir(), 'agybird-runner-'));
@@ -21,8 +30,7 @@ function runRunner({ category = 'general', mode = 'read', prompt = 'CASE_SUCCESS
       cwd: projectRoot,
       env: {
         ...process.env,
-        NODE_ENV: 'test',
-        AGYBIRD_AGY_BIN: fakeAgyPath,
+        PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ''}`,
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -50,7 +58,7 @@ test('runs fake agy through a real child process and emits one success envelope'
   assert.equal(envelope.status, 'success');
   assert.equal(envelope.response, 'ok');
   assert.equal(envelope.evidence.agy_version, 'agy 0.0.0-fake');
-  assert.equal(envelope.evidence.agy_binary, fakeAgyPath);
+  assert.match(envelope.evidence.agy_binary, /agy(?:\.cmd)?$/i);
   assert.equal(result.stderr, '');
 });
 

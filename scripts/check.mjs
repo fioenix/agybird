@@ -25,7 +25,7 @@ assert.deepEqual(packageJson.optionalDependencies ?? {}, {}, 'optional runtime d
 assert.equal(packageJson.private, true, 'the npm package must remain private');
 
 const runner = await import(new URL('./agybird.mjs', import.meta.url));
-const safeArgs = runner.buildAgyArgs({ timeout: '1m' }, 'contract check');
+const safeArgs = runner.buildAgyArgs({ mode: 'read', timeout: '1m' }, 'contract check');
 assert.equal(safeArgs.includes('--dangerously-skip-permissions'), false);
 assert.equal(safeArgs.includes('--sandbox'), false);
 
@@ -49,6 +49,6 @@ for (const path of placeholderTargets) {
   assert.doesNotMatch(content, /\b(?:TODO|TBD|FIXME|YOUR_)\b/, `${path} contains a placeholder`);
 }
 
-run(process.execPath, ['--test']);
+run(process.execPath, ['--test', 'tests/**/*.test.mjs']);
 run('git', ['diff', '--check']);
 process.stdout.write('Agybird checks passed.\n');

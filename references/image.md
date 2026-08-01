@@ -15,7 +15,7 @@ Pass each source with a repeated absolute `--reference` argument. Agybird maps t
 Accept success only when all of these are true:
 
 1. A completed `generate_image` tool call appears in `tool_calls`.
-2. At least one returned artifact is an existing, nonempty supported raster file inside the working directory.
+2. At least one returned artifact is an existing, nonempty supported raster file inside the working directory or Antigravity's `brain/<conversation_id>` artifact directory for that exact result.
 3. Open every resulting image and inspect it visually against the request.
 
 Treat a missing artifact, empty file, unsupported extension, failed tool event, or visually incorrect result as incomplete. Iterate through a new explicit `agy` call when correction is needed.

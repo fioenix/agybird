@@ -15,8 +15,8 @@ This report covers deterministic checks that do not use Google credentials or An
 | Gate | Command | Result |
 | --- | --- | --- |
 | Lockfile install | `npm ci` | Pass, zero dependencies and zero reported vulnerabilities |
-| Full deterministic suite | `npm run check` | Pass, 51 tests |
-| Clean clone | clone to a fresh temporary directory, then `npm ci && npm run check` | Pass, 51 tests |
+| Full deterministic suite | `npm run check` | Pass, 56 tests |
+| Clean clone | clone to a fresh temporary directory, then `npm ci && npm run check` | Pass; repeated after live-driven fixes during release audit |
 | Install layout | `node --test tests/integration/install-layout.test.mjs` | Pass |
 | Diff hygiene | `git diff --check` | Pass |
 | Documentation links | HTTP status check over unique tracked documentation links | Pass, 13 of 13 returned HTTP 200 |
@@ -31,6 +31,8 @@ This report covers deterministic checks that do not use Google credentials or An
 - Permission soft-denial with provider exit code zero.
 - Nonzero provider exit, timeout termination, and output bounds.
 - Image tool success, tool failure, missing artifact, and reference validation.
+- Native conversation-scoped image artifact validation and cross-conversation spoof rejection.
+- Live wrapper refusal when paid-call confirmation is absent.
 - One-envelope stdout contract and sanitized stderr diagnostics.
 - Standalone Agent Skill install layout.
 - Documentation, threat-model, and immutable-workflow contracts.

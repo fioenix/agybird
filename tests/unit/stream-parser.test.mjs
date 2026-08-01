@@ -34,6 +34,18 @@ test('parses init, tool progress, terminal result, response, and usage', () => {
   }]);
 });
 
+test('parses the nested event envelope emitted by agy 1.1.9', () => {
+  const parsed = parseFixture('agy-1.1.9.ndjson');
+
+  assert.equal(parsed.conversationId, 'conv-live');
+  assert.deepEqual(parsed.response, { summary: 'READY', risks: [] });
+  assert.deepEqual(parsed.structuredOutput, { summary: 'READY', risks: [] });
+  assert.equal(parsed.agyStatus, 'SUCCESS');
+  assert.deepEqual(parsed.usage, { total_tokens: 24 });
+  assert.equal(parsed.sawTerminalResult, true);
+  assert.equal(classifyOutcome({ parsed, exitCode: 0, stderr: '' }).status, 'success');
+});
+
 test('handles chunks split across NDJSON boundaries', () => {
   const parser = createStreamParser();
   parser.push('{"type":"init","conversation_id":"conv-chunk"}\n{"type":"res');
@@ -59,6 +71,16 @@ test('classifies explicit permission denial as blocked despite exit zero', () =>
   const outcome = classifyOutcome({ parsed, exitCode: 0, stderr: '' });
   assert.equal(outcome.status, 'blocked');
   assert.match(outcome.warnings.join('\n'), /permission/i);
+});
+
+test('classifies nested agy 1.1.9 tool_info permission errors as blocked', () => {
+  const parsed = parseFixture('agy-1.1.9-permission.ndjson');
+  const outcome = classifyOutcome({ parsed, exitCode: 0, stderr: '' });
+
+  assert.equal(parsed.toolCalls[0].name, 'run_command');
+  assert.equal(parsed.toolCalls[0].status, 'error');
+  assert.match(parsed.toolCalls[0].error, /denied permission/i);
+  assert.equal(outcome.status, 'blocked');
 });
 
 test('classifies permission denial from stderr as blocked despite exit zero', () => {
