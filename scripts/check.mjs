@@ -49,6 +49,6 @@ for (const path of placeholderTargets) {
   assert.doesNotMatch(content, /\b(?:TODO|TBD|FIXME|YOUR_)\b/, `${path} contains a placeholder`);
 }
 
-run(process.execPath, ['--test', 'tests/**/*.test.mjs']);
+run(process.execPath, ['scripts/run-tests.mjs']);
 run('git', ['diff', '--check']);
 process.stdout.write('Agybird checks passed.\n');

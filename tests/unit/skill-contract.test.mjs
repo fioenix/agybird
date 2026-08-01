@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 const root = new URL('../../', import.meta.url);
-const read = (path) => readFileSync(new URL(path, root), 'utf8');
+const read = (path) => readFileSync(new URL(path, root), 'utf8').replace(/\r\n/g, '\n');
 
 test('has valid minimal Agent Skill frontmatter and explicit-only triggers', () => {
   const skill = read('SKILL.md');

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process';
-import { accessSync, constants, realpathSync, statSync } from 'node:fs';
+import { accessSync, closeSync, constants, openSync, readSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -398,15 +398,37 @@ function canExecute(path) {
   }
 }
 
+function nodeScriptPrefix(path) {
+  let descriptor;
+  try {
+    descriptor = openSync(path, 'r');
+    const buffer = Buffer.alloc(256);
+    const bytesRead = readSync(descriptor, buffer, 0, buffer.length, 0);
+    const firstLine = buffer.subarray(0, bytesRead).toString('utf8').split(/\r?\n/, 1)[0];
+    if (/^#!.*(?:\/|\s)node(?:\.exe)?(?:\s|$)/i.test(firstLine)) {
+      return [path];
+    }
+  } catch {
+    return null;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+  return null;
+}
+
 export function resolveAgyBinary(env = process.env) {
   const pathEntries = String(env.PATH ?? '').split(delimiter).filter(Boolean);
   const extensions = process.platform === 'win32'
-    ? String(env.PATHEXT ?? '.EXE;.CMD;.BAT;.COM').split(';')
+    ? ['', ...String(env.PATHEXT ?? '.EXE;.CMD;.BAT;.COM').split(';')]
     : [''];
   for (const directory of pathEntries) {
     for (const extension of extensions) {
       const candidate = resolve(directory, `agy${extension}`);
       if (canExecute(candidate)) {
+        const prefixArgs = nodeScriptPrefix(candidate);
+        if (prefixArgs) {
+          return { command: process.execPath, prefixArgs, displayPath: candidate };
+        }
         return { command: candidate, prefixArgs: [], displayPath: candidate };
       }
     }

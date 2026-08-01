@@ -11,14 +11,9 @@ const projectRoot = join(testDirectory, '..', '..');
 const runnerPath = join(projectRoot, 'scripts', 'agybird.mjs');
 const fakeAgyPath = join(projectRoot, 'tests', 'fixtures', 'fake-agy.mjs');
 const fakeBin = mkdtempSync(join(tmpdir(), 'agybird-fake-bin-'));
-const fakeCommandPath = join(fakeBin, process.platform === 'win32' ? 'agy.cmd' : 'agy');
-
-if (process.platform === 'win32') {
-  writeFileSync(fakeCommandPath, `@"${process.execPath}" "${fakeAgyPath}" %*\r\n`);
-} else {
-  copyFileSync(fakeAgyPath, fakeCommandPath);
-  chmodSync(fakeCommandPath, 0o755);
-}
+const fakeCommandPath = join(fakeBin, 'agy');
+copyFileSync(fakeAgyPath, fakeCommandPath);
+chmodSync(fakeCommandPath, 0o755);
 
 function runRunner({ category = 'general', mode = 'read', prompt = 'CASE_SUCCESS', timeout = '5s', references = [] } = {}) {
   const cwd = mkdtempSync(join(tmpdir(), 'agybird-runner-'));
