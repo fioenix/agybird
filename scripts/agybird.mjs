@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-import { statSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { spawn } from 'node:child_process';
+import { accessSync, constants, realpathSync, statSync } from 'node:fs';
+import { delimiter, extname, isAbsolute, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const VALUE_OPTIONS = new Map([
@@ -299,7 +300,15 @@ export function classifyOutcome({ parsed, exitCode, stderr }) {
   return { status: 'success', warnings };
 }
 
-export function makeEnvelope({ category, parsed, outcome, exitCode, artifacts = parsed.artifacts }) {
+export function makeEnvelope({
+  category,
+  parsed,
+  outcome,
+  exitCode,
+  artifacts = parsed.artifacts,
+  agyBinary,
+  agyVersion,
+}) {
   return {
     schema_version: 1,
     status: outcome.status,
@@ -313,20 +322,261 @@ export function makeEnvelope({ category, parsed, outcome, exitCode, artifacts = 
     evidence: {
       agy_exit_code: exitCode,
       agy_status: parsed.agyStatus,
+      ...(agyBinary === undefined ? {} : { agy_binary: agyBinary }),
+      ...(agyVersion === undefined ? {} : { agy_version: agyVersion }),
     },
   };
 }
 
-export async function main() {
-  throw new Error('Runner execution is not implemented yet');
+export function timeoutToMilliseconds(timeout) {
+  const match = /^(\d+)(ms|s|m)$/.exec(timeout);
+  if (!match) throw new Error(`Invalid timeout: ${timeout}`);
+  const factors = { ms: 1, s: 1_000, m: 60_000 };
+  return Number(match[1]) * factors[match[2]];
+}
+
+function canExecute(path) {
+  try {
+    accessSync(path, process.platform === 'win32' ? constants.F_OK : constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function resolveAgyBinary(env = process.env) {
+  if (env.NODE_ENV === 'test' && env.AGYBIRD_AGY_BIN) {
+    if (!isAbsolute(env.AGYBIRD_AGY_BIN)) {
+      throw new Error('AGYBIRD_AGY_BIN must be absolute in tests');
+    }
+    if (!statOrNull(env.AGYBIRD_AGY_BIN)?.isFile()) {
+      throw new Error('AGYBIRD_AGY_BIN does not point to a file');
+    }
+    return {
+      command: extname(env.AGYBIRD_AGY_BIN) === '.mjs' ? process.execPath : env.AGYBIRD_AGY_BIN,
+      prefixArgs: extname(env.AGYBIRD_AGY_BIN) === '.mjs' ? [env.AGYBIRD_AGY_BIN] : [],
+      displayPath: env.AGYBIRD_AGY_BIN,
+    };
+  }
+
+  const pathEntries = String(env.PATH ?? '').split(delimiter).filter(Boolean);
+  const extensions = process.platform === 'win32'
+    ? String(env.PATHEXT ?? '.EXE;.CMD;.BAT;.COM').split(';')
+    : [''];
+  for (const directory of pathEntries) {
+    for (const extension of extensions) {
+      const candidate = resolve(directory, `agy${extension}`);
+      if (canExecute(candidate)) {
+        return { command: candidate, prefixArgs: [], displayPath: candidate };
+      }
+    }
+  }
+  throw new Error('Official Antigravity CLI `agy` was not found on PATH');
+}
+
+function spawnCaptured(command, args, { cwd, env, timeoutMs, maxBytes = 16 * 1024 * 1024 }) {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      env,
+      shell: false,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+    let overflowed = false;
+
+    function append(current, chunk) {
+      if (Buffer.byteLength(current) + chunk.length > maxBytes) {
+        overflowed = true;
+        child.kill();
+        return current;
+      }
+      return current + chunk.toString('utf8');
+    }
+
+    child.stdout.on('data', (chunk) => { stdout = append(stdout, chunk); });
+    child.stderr.on('data', (chunk) => { stderr = append(stderr, chunk); });
+    child.on('error', reject);
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, timeoutMs);
+    timer.unref?.();
+
+    child.on('close', (exitCode, signal) => {
+      clearTimeout(timer);
+      resolvePromise({
+        stdout,
+        stderr,
+        exitCode: exitCode ?? (timedOut || overflowed ? 1 : 0),
+        signal,
+        timedOut,
+        overflowed,
+      });
+    });
+  });
+}
+
+async function readPrompt(stream = process.stdin, limit = 1024 * 1024) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of stream) {
+    size += chunk.length;
+    if (size > limit) throw new Error('Prompt exceeds the 1 MiB input limit');
+    chunks.push(chunk);
+  }
+  const prompt = Buffer.concat(chunks).toString('utf8');
+  if (!prompt.trim()) throw new Error('Prompt must be supplied through stdin');
+  return prompt;
+}
+
+export async function runAgy(options, delegatedPrompt, env = process.env) {
+  const binary = resolveAgyBinary(env);
+  const preflight = await spawnCaptured(binary.command, [...binary.prefixArgs, '--version'], {
+    cwd: options.cwd,
+    env,
+    timeoutMs: 5_000,
+    maxBytes: 64 * 1024,
+  });
+  if (preflight.exitCode !== 0 || !preflight.stdout.trim()) {
+    throw new Error('Official Antigravity CLI version preflight failed');
+  }
+
+  const execution = await spawnCaptured(
+    binary.command,
+    [...binary.prefixArgs, ...buildAgyArgs(options, delegatedPrompt)],
+    {
+      cwd: options.cwd,
+      env,
+      timeoutMs: timeoutToMilliseconds(options.timeout),
+    },
+  );
+  return {
+    ...execution,
+    binaryPath: binary.displayPath,
+    version: preflight.stdout.trim().split(/\r?\n/, 1)[0],
+  };
+}
+
+function collectArtifactPaths(value, paths = [], key = '') {
+  if (typeof value === 'string' && /(?:^|_)(?:image_?)?(?:file_?)?path$/i.test(key)) {
+    paths.push(value);
+  } else if (Array.isArray(value)) {
+    for (const item of value) collectArtifactPaths(item, paths, key);
+  } else if (value && typeof value === 'object') {
+    for (const [childKey, child] of Object.entries(value)) {
+      collectArtifactPaths(child, paths, childKey);
+    }
+  }
+  return paths;
+}
+
+function pathIsWithin(path, parent) {
+  const pathRelative = relative(parent, path);
+  return pathRelative === '' || (!pathRelative.startsWith('..') && !isAbsolute(pathRelative));
+}
+
+export function verifyImageArtifacts(parsed, cwd) {
+  const imageTools = parsed.toolCalls.filter((tool) => tool.name === 'generate_image');
+  const completed = imageTools.filter((tool) => ['completed', 'complete', 'success', 'succeeded'].includes(tool.status));
+  if (completed.length === 0) {
+    return { artifacts: [], error: imageTools.length === 0 ? 'No generate_image tool call was observed.' : null };
+  }
+
+  const canonicalCwd = realpathSync(cwd);
+  const candidates = new Set([
+    ...parsed.artifacts.flatMap((artifact) => typeof artifact === 'string' ? [artifact] : collectArtifactPaths(artifact)),
+    ...completed.flatMap((tool) => collectArtifactPaths(tool.result)),
+  ]);
+  const artifacts = [];
+
+  for (const candidate of candidates) {
+    const absolutePath = isAbsolute(candidate) ? candidate : resolve(cwd, candidate);
+    const artifactStat = statOrNull(absolutePath);
+    if (!artifactStat?.isFile() || artifactStat.size === 0) continue;
+    if (!['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(extname(absolutePath).toLowerCase())) continue;
+    const canonicalArtifact = realpathSync(absolutePath);
+    if (!pathIsWithin(canonicalArtifact, canonicalCwd)) continue;
+    artifacts.push({ path: canonicalArtifact, size: artifactStat.size });
+  }
+
+  return {
+    artifacts,
+    error: artifacts.length === 0 ? 'A completed generate_image tool call produced no valid image artifact.' : null,
+  };
+}
+
+function fatalEnvelope(category, error) {
+  return {
+    schema_version: 1,
+    status: 'error',
+    category: category ?? null,
+    conversation_id: null,
+    response: null,
+    tool_calls: [],
+    artifacts: [],
+    warnings: [error.message],
+    usage: null,
+    evidence: { agy_exit_code: null, agy_status: null },
+  };
+}
+
+export async function main(argv = process.argv.slice(2), env = process.env) {
+  let options;
+  try {
+    options = validateRequest(parseArgs(argv));
+    const userPrompt = await readPrompt();
+    const delegatedPrompt = buildDelegationPrompt(options, userPrompt);
+    const execution = await runAgy(options, delegatedPrompt, env);
+    const parser = createStreamParser();
+    parser.push(execution.stdout);
+    const parsed = parser.finish();
+    let outcome = classifyOutcome({ parsed, exitCode: execution.exitCode, stderr: execution.stderr });
+
+    if (execution.timedOut) {
+      outcome = { status: 'error', warnings: [...outcome.warnings, `agy timed out after ${options.timeout}`] };
+    }
+    if (execution.overflowed) {
+      outcome = { status: 'error', warnings: [...outcome.warnings, 'agy output exceeded the 16 MiB limit'] };
+    }
+
+    let artifacts = parsed.artifacts;
+    if (options.category === 'image') {
+      const verified = verifyImageArtifacts(parsed, options.cwd);
+      artifacts = verified.artifacts;
+      if (verified.error && outcome.status === 'success') {
+        outcome = { status: 'error', warnings: [...outcome.warnings, verified.error] };
+      }
+    }
+
+    const envelope = makeEnvelope({
+      category: options.category,
+      parsed,
+      outcome,
+      exitCode: execution.exitCode,
+      artifacts,
+      agyBinary: execution.binaryPath,
+      agyVersion: execution.version,
+    });
+    process.stdout.write(`${JSON.stringify(envelope)}\n`);
+    if (execution.stderr) {
+      process.stderr.write(`agybird: agy emitted ${Buffer.byteLength(execution.stderr)} bytes of diagnostics\n`);
+    }
+    process.exitCode = outcome.status === 'error' ? 1 : 0;
+  } catch (error) {
+    process.stdout.write(`${JSON.stringify(fatalEnvelope(options?.category, error))}\n`);
+    process.stderr.write(`agybird: ${error.message}\n`);
+    process.exitCode = 1;
+  }
 }
 
 const isDirectExecution = process.argv[1]
   && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isDirectExecution) {
-  main().catch((error) => {
-    process.stderr.write(`agybird: ${error.message}\n`);
-    process.exitCode = 1;
-  });
+  main();
 }
