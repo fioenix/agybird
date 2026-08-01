@@ -76,6 +76,8 @@ Tests use a fake provider process and require no Google credentials. Live tests 
 
 The optional live wrapper refuses to spend credits unless `AGYBIRD_LIVE_CONFIRM=1` is set for that invocation. It still preserves the current Antigravity model, sandbox, permissions, and `useG1Credits` setting.
 
+Evidence: [deterministic verification](docs/verification/2026-08-02-simulated.md) and [live macOS verification with `agy` 1.1.9](docs/verification/2026-08-02-live-macos.md).
+
 ## License
 
 [MIT](LICENSE). Use of Google Antigravity remains subject to [Google's Antigravity terms](https://antigravity.google/terms).

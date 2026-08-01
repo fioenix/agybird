@@ -16,7 +16,7 @@ function assertPinnedActions(workflow) {
 test('CI uses immutable actions and least-privilege permissions', () => {
   const workflow = read('.github/workflows/ci.yml');
   assertPinnedActions(workflow);
-  assert.match(workflow, /^permissions:\n  contents: read$/m);
+  assert.match(workflow, /^permissions:\r?\n  contents: read\r?$/m);
   assert.doesNotMatch(workflow, /pull_request_target/);
   assert.doesNotMatch(workflow, /secrets\.|GOOGLE_|GEMINI_|ANTIGRAVITY_/);
 });
@@ -34,9 +34,9 @@ test('CI covers supported systems and Node versions', () => {
 test('release workflow validates tags before a least-privilege release', () => {
   const workflow = read('.github/workflows/release.yml');
   assertPinnedActions(workflow);
-  assert.match(workflow, /tags:\n\s+- ['"]v\*['"]/);
-  assert.match(workflow, /^permissions:\n  contents: read$/m);
-  assert.match(workflow, /^\s+permissions:\n\s+contents: write$/m);
+  assert.match(workflow, /tags:\r?\n\s+- ['"]v\*['"]/);
+  assert.match(workflow, /^permissions:\r?\n  contents: read\r?$/m);
+  assert.match(workflow, /^\s+permissions:\r?\n\s+contents: write\r?$/m);
   assert.match(workflow, /npm run check/);
   assert.match(workflow, /gh release create/);
   assert.doesNotMatch(workflow, /pull_request_target/);
