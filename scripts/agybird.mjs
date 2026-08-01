@@ -147,6 +147,30 @@ export function buildDelegationPrompt(options, userPrompt) {
   return common.join('\n');
 }
 
+export function buildAgyArgs(options, delegatedPrompt) {
+  const args = [
+    '-p', delegatedPrompt,
+    '--output-format', 'stream-json',
+    '--print-timeout', options.timeout,
+  ];
+  const optionalValues = [
+    ['jsonSchema', '--json-schema'],
+    ['conversation', '--conversation'],
+    ['model', '--model'],
+    ['effort', '--effort'],
+    ['agent', '--agent'],
+  ];
+  for (const [property, flag] of optionalValues) {
+    if (options[property] !== undefined) {
+      args.push(flag, options[property]);
+    }
+  }
+  if (options.sandbox) {
+    args.push('--sandbox');
+  }
+  return args;
+}
+
 export async function main() {
   throw new Error('Runner execution is not implemented yet');
 }
