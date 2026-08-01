@@ -4,6 +4,14 @@
   "description": "Agent Skill bridge for the official Google Antigravity CLI",
   "type": "module",
   "private": true,
+  "files": [
+    "SKILL.md",
+    "scripts/agybird.mjs",
+    "references/",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md"
+  ],
   "engines": {
     "node": ">=20"
   },
