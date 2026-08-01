@@ -1,0 +1,23 @@
+{
+  "skill_name": "agybird",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Dùng agy ở chế độ read để rà lỗi logic trong src/cart.ts, không sửa file. Trả về bằng chứng cụ thể và giữ nguyên cấu hình model hiện tại của Antigravity.",
+      "expected_output": "The agent selects code/read, invokes the runner through stdin, makes no edits, and independently confirms the workspace stayed unchanged.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Dùng Gemini subscription qua Antigravity CLI để tạo một ảnh chim xanh tối giản trong thư mục hiện tại, rồi mở ảnh kiểm tra giúp tao.",
+      "expected_output": "The agent selects image/write, requires generate_image, validates the returned artifact, and visually inspects it without changing credit settings.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Nhờ agy tổng hợp thư mục docs thành JSON theo schema gồm summary và risks. Chỉ đọc, không tạo file.",
+      "expected_output": "The agent selects general/read, passes the JSON schema, uses stdin, and returns a normalized schema-conforming result without file writes.",
+      "files": []
+    }
+  ]
+}
