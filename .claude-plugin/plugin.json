@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "agybird",
+  "displayName": "Agybird",
+  "version": "0.1.1",
+  "description": "Delegate code work, image generation or editing, and general tasks to the official Google Antigravity CLI through an existing Gemini subscription.",
+  "author": {
+    "name": "Fioenix",
+    "url": "https://github.com/fioenix"
+  },
+  "homepage": "https://github.com/fioenix/agybird",
+  "repository": "https://github.com/fioenix/agybird",
+  "license": "MIT",
+  "keywords": ["antigravity", "agy", "gemini", "delegation"]
+}

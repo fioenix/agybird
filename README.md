@@ -22,6 +22,19 @@ Google continues to enforce subscription eligibility, quota and credit availabil
 
 ## Install
 
+### As a Claude Code plugin
+
+Add the marketplace, then install the plugin:
+
+```text
+/plugin marketplace add fioenix/agybird
+/plugin install agybird@agybird
+```
+
+Claude Code pins the installed plugin to the version in `.claude-plugin/plugin.json`, so updates arrive only when that version changes. This path requires Claude Code v2.1.142 or newer.
+
+### As an Agent Skill
+
 Use the interactive installer and select Claude Code, Codex, or both:
 
 ```bash
@@ -35,6 +48,8 @@ npx skills add fioenix/agybird --global --agent claude-code codex
 ```
 
 The command uses the open-source [Skills CLI](https://github.com/vercel-labs/skills). Review its prompt before confirming destinations.
+
+Both paths install the same skill from the same files. Use the plugin path for versioned updates inside Claude Code, and the skill path for Codex or for a plain skill install.
 
 ## Use
 
