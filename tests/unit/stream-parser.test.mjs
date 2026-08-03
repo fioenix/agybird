@@ -66,21 +66,82 @@ test('records malformed lines as sanitized warnings and recovers', () => {
   assert.doesNotMatch(parsed.warnings[0], /this is not json/);
 });
 
-test('classifies explicit permission denial as blocked despite exit zero', () => {
+test('classifies a denial with no derivable allow-rule as blocked despite exit zero', () => {
   const parsed = parseFixture('permission-denied.ndjson');
   const outcome = classifyOutcome({ parsed, exitCode: 0, stderr: '' });
   assert.equal(outcome.status, 'blocked');
   assert.match(outcome.warnings.join('\n'), /permission/i);
 });
 
-test('classifies nested agy 1.1.9 tool_info permission errors as blocked', () => {
+test('classifies nested agy 1.1.9 tool_info permission errors as needing permission', () => {
   const parsed = parseFixture('agy-1.1.9-permission.ndjson');
   const outcome = classifyOutcome({ parsed, exitCode: 0, stderr: '' });
 
   assert.equal(parsed.toolCalls[0].name, 'run_command');
   assert.equal(parsed.toolCalls[0].status, 'error');
   assert.match(parsed.toolCalls[0].error, /denied permission/i);
+  assert.equal(outcome.status, 'needs_permission');
+});
+
+test('reports the denied tool, target, and allow-rule captured from live agy 1.1.9', () => {
+  const parsed = parseFixture('agy-1.1.9-command-denied.ndjson');
+  const outcome = classifyOutcome({ parsed, exitCode: 0, stderr: '' });
+
+  assert.equal(outcome.status, 'needs_permission');
+  assert.deepEqual(outcome.permissionRequests.map((request) => ({
+    tool: request.tool,
+    target: request.target,
+    suggested_rule: request.suggested_rule,
+    grantable: request.grantable,
+  })), [{
+    tool: 'run_command',
+    target: 'git rev-parse --show-toplevel',
+    suggested_rule: 'command(git rev-parse --show-toplevel)',
+    grantable: true,
+  }]);
+  assert.match(outcome.permissionRequests[0].settings_path, /\.gemini[/\\]antigravity-cli[/\\]settings\.json$/);
+  assert.match(outcome.warnings.join('\n'), /permissions\.allow/);
+});
+
+test('keeps a denial ungrantable when agy states allow-rules do not apply', () => {
+  const parsed = parseFixture('agy-1.1.9-command-denied.ndjson');
+  const outcome = classifyOutcome({
+    parsed,
+    exitCode: 0,
+    stderr: 'the browser tool(s) required approval that headless mode cannot prompt for, so they were auto-denied. Settings allow-rules do not apply; re-run with --dangerously-skip-permissions to auto-approve all tools.',
+  });
+
   assert.equal(outcome.status, 'blocked');
+  assert.equal(outcome.permissionRequests[0].grantable, false);
+});
+
+test('takes the rule from ask_permission when agy requests a grant itself', () => {
+  const parser = createStreamParser();
+  parser.push([
+    '{"event":"init","conversation_id":"conv-ask"}',
+    '{"event":"step_update","step_update":{"step_index":8,"state":"DONE","step_type":"tool","tool_name":"ask_permission","tool_info":{"name":"ask_permission","parameters":{"Action":"command","Reason":"Need to run git commands to get the commit hash.","Target":"git"},"error":{"type":"TOOL_ERROR","message":"User denied permission to run command:\\ngit"}}}}',
+    '{"event":"result","result":{"status":"SUCCESS","response":""}}',
+    '',
+  ].join('\n'));
+  const outcome = classifyOutcome({ parsed: parser.finish(), exitCode: 0, stderr: '' });
+
+  assert.equal(outcome.status, 'needs_permission');
+  assert.equal(outcome.permissionRequests[0].target, 'git');
+  assert.equal(outcome.permissionRequests[0].suggested_rule, 'command(git)');
+});
+
+test('maps view_file and list_dir denials onto read_file allow-rules', () => {
+  const parser = createStreamParser();
+  parser.push([
+    '{"event":"init","conversation_id":"conv-read"}',
+    '{"event":"step_update","step_update":{"step_index":1,"state":"ERROR","step_type":"tool","tool_name":"view_file","tool_info":{"name":"view_file","parameters":{"AbsolutePath":"/repo/src/main.ts"},"error":{"type":"TOOL_ERROR","message":"User denied permission to read file"}}}}',
+    '{"event":"result","result":{"status":"SUCCESS","response":""}}',
+    '',
+  ].join('\n'));
+  const outcome = classifyOutcome({ parsed: parser.finish(), exitCode: 0, stderr: '' });
+
+  assert.equal(outcome.status, 'needs_permission');
+  assert.equal(outcome.permissionRequests[0].suggested_rule, 'read_file(/repo/src/main\\.ts)');
 });
 
 test('classifies permission denial from stderr as blocked despite exit zero', () => {
@@ -120,6 +181,7 @@ test('creates the stable public envelope without raw stream events', () => {
     'conversation_id',
     'response',
     'tool_calls',
+    'permission_requests',
     'artifacts',
     'warnings',
     'usage',

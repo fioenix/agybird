@@ -1,9 +1,22 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process';
-import { accessSync, closeSync, constants, openSync, readSync, realpathSync, statSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import {
+  accessSync,
+  closeSync,
+  constants,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  readSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
-import { delimiter, extname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, delimiter, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const VALUE_OPTIONS = new Map([
@@ -13,6 +26,8 @@ const VALUE_OPTIONS = new Map([
   ['--reference', 'references'],
   ['--json-schema', 'jsonSchema'],
   ['--conversation', 'conversation'],
+  ['--grant', 'grants'],
+  ['--grant-scope', 'grantScope'],
   ['--model', 'model'],
   ['--effort', 'effort'],
   ['--agent', 'agent'],
@@ -27,6 +42,8 @@ export function parseArgs(argv) {
   const options = {
     mode: 'read',
     references: [],
+    grants: [],
+    grantScope: 'once',
     sandbox: false,
     timeout: '10m',
   };
@@ -49,8 +66,8 @@ export function parseArgs(argv) {
     }
     index += 1;
 
-    if (property === 'references') {
-      options.references.push(value);
+    if (property === 'references' || property === 'grants') {
+      options[property].push(value);
     } else {
       options[property] = value;
     }
@@ -109,10 +126,116 @@ export function validateRequest(options) {
     }
   }
 
+  if (!['once', 'remember'].includes(options.grantScope)) {
+    throw new Error(`Invalid grant scope: ${options.grantScope}; use once or remember`);
+  }
+  if (options.grants.length > 0 && options.conversation === undefined) {
+    throw new Error('--grant requires --conversation; a grant only applies when resuming the run it unblocks');
+  }
+  for (const rule of options.grants) {
+    parseGrantRule(rule);
+  }
+
   if (!/^([1-9]\d*)(ms|s|m)$/.test(options.timeout)) {
     throw new Error(`Invalid timeout: ${options.timeout}; use a positive number followed by ms, s, or m`);
   }
   return options;
+}
+
+const PROJECTS_DIRECTORY = join(homedir(), '.gemini', 'config', 'projects');
+const RULE_KINDS = new Set(['command', 'read_file', 'write_file', 'mcp', 'read_url', 'execute_url', 'unsandboxed']);
+const RULE_PATTERN = /^([a-z_]+)\(([\s\S]+)\)$/;
+
+// A grant always originates from a user decision on a reported permission
+// request. The runner never invents one, and refuses targets broad enough to
+// authorize far more than the action that was actually denied.
+export function parseGrantRule(rule) {
+  const match = RULE_PATTERN.exec(rule);
+  if (!match) throw new Error(`Invalid allow-rule: ${rule}`);
+  const [, kind, target] = match;
+  if (!RULE_KINDS.has(kind)) {
+    throw new Error(`Unsupported allow-rule kind: ${kind}`);
+  }
+  if (['*', '/', '~', '.*'].includes(target.trim())) {
+    throw new Error(`Allow-rule target is too broad: ${rule}`);
+  }
+  return { kind, target };
+}
+
+function readJsonOrNull(path) {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function workspaceUri(cwd) {
+  return pathToFileURL(cwd).href.replace(/\/$/, '');
+}
+
+export function findProjectForWorkspace(cwd, directory = PROJECTS_DIRECTORY) {
+  const wanted = workspaceUri(cwd);
+  let entries;
+  try {
+    entries = readdirSync(directory);
+  } catch {
+    return null;
+  }
+  for (const entry of entries) {
+    if (!entry.endsWith('.json')) continue;
+    const path = join(directory, entry);
+    const document = readJsonOrNull(path);
+    const resources = document?.projectResources?.resources ?? [];
+    const matches = resources.some(
+      (resource) => resource?.gitFolder?.folderUri?.replace(/\/$/, '') === wanted,
+    );
+    if (matches) return { path, document };
+  }
+  return null;
+}
+
+// A conversation is bound to its project when it is created, so `--project` has
+// to be passed on the very first run for a later grant to reach the resumed
+// session. Every run therefore resolves a project for the workspace, creating an
+// empty one when Antigravity has not recorded this repository yet.
+export function ensureProject(cwd, directory = PROJECTS_DIRECTORY) {
+  mkdirSync(directory, { recursive: true });
+  const existing = findProjectForWorkspace(cwd, directory);
+  if (existing) {
+    return { id: existing.document.id ?? basename(existing.path, '.json'), path: existing.path };
+  }
+  const id = `agybird-${randomUUID()}`;
+  const path = join(directory, `${id}.json`);
+  writeFileSync(path, JSON.stringify({
+    id,
+    name: basename(cwd),
+    projectResources: { resources: [{ gitFolder: { folderUri: workspaceUri(cwd) } }] },
+    updatedAt: new Date().toISOString(),
+  }, null, 1));
+  return { id, path };
+}
+
+// Antigravity reads project grants from ~/.gemini/config/projects/<id>.json and
+// applies them when the session runs under `--project <id>`. Writing here keeps
+// the grant scoped to one repository and never touches the working tree.
+export function applyGrants(projectPath, rules) {
+  const previous = readFileSync(projectPath, 'utf8');
+  const document = JSON.parse(previous);
+
+  document.permissionGrants ??= {};
+  document.permissionGrants.permissionGrants ??= {};
+  const allow = (document.permissionGrants.permissionGrants.allow ??= []);
+  for (const rule of rules) {
+    if (!allow.includes(rule)) allow.push(rule);
+  }
+  document.updatedAt = new Date().toISOString();
+  writeFileSync(projectPath, JSON.stringify(document, null, 1));
+  return { path: projectPath, previous };
+}
+
+export function revertGrants({ path, previous }) {
+  writeFileSync(path, previous);
 }
 
 const READ_ONLY_POLICY = 'Do not create, edit, move, or delete files. Work read-only and cite concrete evidence for conclusions.';
@@ -162,6 +285,7 @@ export function buildAgyArgs(options, delegatedPrompt) {
   const optionalValues = [
     ['jsonSchema', '--json-schema'],
     ['conversation', '--conversation'],
+    ['project', '--project'],
     ['model', '--model'],
     ['effort', '--effort'],
     ['agent', '--agent'],
@@ -317,7 +441,86 @@ export function createStreamParser() {
 }
 
 const PERMISSION_DENIAL = /permission(?:s)? (?:denied|declined|required)|denied permission|auto-denied|not (?:executed|allowed|permitted)|user (?:denied|declined|rejected)|approval (?:denied|required)/i;
+// agy 1.1.9 emits this when no allow-rule can authorize the tool, so only
+// --dangerously-skip-permissions would proceed. Agybird never offers that.
+const UNGRANTABLE_DENIAL = /Settings allow-rules do not apply/i;
 const FAILED_TOOL_STATUS = new Set(['error', 'failed', 'failure', 'denied', 'blocked', 'cancelled', 'canceled']);
+
+// Allow-rule kinds accepted by agy 1.1.9. The rule kind is the underlying
+// action, not the tool name: `view_file` is authorized by `read_file(...)`.
+const RULE_KIND_BY_TOOL = new Map([
+  ['run_command', 'command'],
+  ['view_file', 'read_file'],
+  ['list_dir', 'read_file'],
+  ['read_file', 'read_file'],
+  ['write_file', 'write_file'],
+  ['edit_file', 'write_file'],
+  ['replace_file_content', 'write_file'],
+]);
+const TARGET_PARAMETERS = ['CommandLine', 'AbsolutePath', 'DirectoryPath', 'TargetFile', 'FilePath', 'Url'];
+const MAX_PERMISSION_FIELD = 300;
+const GLOBAL_SETTINGS_PATH = join(homedir(), '.gemini', 'antigravity-cli', 'settings.json');
+
+function truncateField(value) {
+  return value.replace(/\s+/g, ' ').trim().slice(0, MAX_PERMISSION_FIELD);
+}
+
+function permissionTarget(tool) {
+  const parameters = tool.arguments;
+  if (!parameters || typeof parameters !== 'object') return null;
+  for (const key of TARGET_PARAMETERS) {
+    const value = parameters[key];
+    if (typeof value === 'string' && value.trim()) return truncateField(value);
+  }
+  return null;
+}
+
+function escapeRuleTarget(target) {
+  // agy matches rule targets as regular expressions, so a literal target must be escaped.
+  return target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// When agy asks for a grant explicitly it names the rule kind and target itself,
+// which is authoritative — the model may request a broader target than the single
+// call that was denied, and the user must see the scope actually being requested.
+function askedPermission(tool) {
+  if (tool.name !== 'ask_permission') return null;
+  const parameters = tool.arguments;
+  if (!parameters || typeof parameters !== 'object') return null;
+  const action = typeof parameters.Action === 'string' ? parameters.Action.trim() : null;
+  const target = typeof parameters.Target === 'string' ? truncateField(parameters.Target) : null;
+  if (!action || !target || !RULE_KINDS.has(action)) return null;
+  return { target, rule: `${action}(${escapeRuleTarget(target)})` };
+}
+
+function suggestedRule(toolName, target) {
+  const kind = RULE_KIND_BY_TOOL.get(toolName);
+  if (!kind || !target) return null;
+  return `${kind}(${escapeRuleTarget(target)})`;
+}
+
+// Structured description of every action the permission policy refused. Callers
+// must render these fields, never the raw agy text, so untrusted stream content
+// cannot phrase itself as an instruction to the approving agent.
+export function describePermissionRequests(parsed, stderr = '') {
+  const requests = [];
+  for (const tool of parsed.toolCalls) {
+    const reason = typeof tool.error === 'string' ? tool.error : null;
+    if (!reason || !PERMISSION_DENIAL.test(reason)) continue;
+    const asked = askedPermission(tool);
+    const target = asked?.target ?? permissionTarget(tool);
+    const rule = asked?.rule ?? suggestedRule(tool.name, target);
+    requests.push({
+      tool: tool.name,
+      target,
+      suggested_rule: rule,
+      grantable: !UNGRANTABLE_DENIAL.test(stderr) && rule !== null,
+      settings_path: GLOBAL_SETTINGS_PATH,
+      reason: truncateField(reason),
+    });
+  }
+  return requests;
+}
 
 export function classifyOutcome({ parsed, exitCode, stderr }) {
   const warnings = [...parsed.warnings];
@@ -328,8 +531,16 @@ export function classifyOutcome({ parsed, exitCode, stderr }) {
   ].join('\n');
 
   if (PERMISSION_DENIAL.test(permissionText)) {
-    warnings.push('Antigravity permission policy blocked at least one requested action.');
-    return { status: 'blocked', warnings };
+    const permissionRequests = describePermissionRequests(parsed, stderr);
+    const grantable = permissionRequests.filter((request) => request.grantable);
+    for (const request of grantable) {
+      warnings.push(`Antigravity denied \`${request.tool}\` on ${JSON.stringify(request.target)}; allow-rule \`${request.suggested_rule}\` under permissions.allow in ${request.settings_path} would authorize it.`);
+    }
+    if (grantable.length === 0) {
+      warnings.push('Antigravity permission policy blocked at least one requested action and no allow-rule can authorize it.');
+      return { status: 'blocked', warnings, permissionRequests };
+    }
+    return { status: 'needs_permission', warnings, permissionRequests };
   }
   if (exitCode !== 0) {
     warnings.push(`agy exited with code ${exitCode}`);
@@ -370,6 +581,7 @@ export function makeEnvelope({
       name: tool.name,
       status: tool.status,
     })),
+    permission_requests: outcome.permissionRequests ?? [],
     artifacts,
     warnings: outcome.warnings,
     usage: parsed.usage,
@@ -600,6 +812,7 @@ function fatalEnvelope(category, error) {
     conversation_id: null,
     response: null,
     tool_calls: [],
+    permission_requests: [],
     artifacts: [],
     warnings: [error.message],
     usage: null,
@@ -609,10 +822,16 @@ function fatalEnvelope(category, error) {
 
 export async function main(argv = process.argv.slice(2), env = process.env) {
   let options;
+  let grantState = null;
   try {
     options = validateRequest(parseArgs(argv));
     const userPrompt = await readPrompt();
     const delegatedPrompt = buildDelegationPrompt(options, userPrompt);
+    const project = ensureProject(options.cwd, env.AGYBIRD_PROJECTS_DIR || PROJECTS_DIRECTORY);
+    options.project = project.id;
+    if (options.grants.length > 0) {
+      grantState = applyGrants(project.path, options.grants);
+    }
     const execution = await runAgy(options, delegatedPrompt, env);
     const parser = createStreamParser();
     parser.push(execution.stdout);
@@ -620,10 +839,10 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
     let outcome = classifyOutcome({ parsed, exitCode: execution.exitCode, stderr: execution.stderr });
 
     if (execution.timedOut) {
-      outcome = { status: 'error', warnings: [...outcome.warnings, `agy timed out after ${options.timeout}`] };
+      outcome = { ...outcome, status: 'error', warnings: [...outcome.warnings, `agy timed out after ${options.timeout}`] };
     }
     if (execution.overflowed) {
-      outcome = { status: 'error', warnings: [...outcome.warnings, 'agy output exceeded the 16 MiB limit'] };
+      outcome = { ...outcome, status: 'error', warnings: [...outcome.warnings, 'agy output exceeded the 16 MiB limit'] };
     }
 
     let artifacts = parsed.artifacts;
@@ -631,7 +850,7 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
       const verified = verifyImageArtifacts(parsed, options.cwd);
       artifacts = verified.artifacts;
       if (verified.error && outcome.status === 'success') {
-        outcome = { status: 'error', warnings: [...outcome.warnings, verified.error] };
+        outcome = { ...outcome, status: 'error', warnings: [...outcome.warnings, verified.error] };
       }
     }
 
@@ -653,6 +872,11 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
     process.stdout.write(`${JSON.stringify(fatalEnvelope(options?.category, error))}\n`);
     process.stderr.write(`agybird: ${error.message}\n`);
     process.exitCode = 1;
+  } finally {
+    // A one-time grant must leave no trace, including when the run failed.
+    if (grantState && options?.grantScope === 'once') {
+      revertGrants(grantState);
+    }
   }
 }
 

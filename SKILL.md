@@ -24,7 +24,8 @@ Use the official Antigravity CLI as a delegated worker while keeping its authent
 2. Check `agy --version`. If `agy` is missing, pause and ask for confirmation before using an official installer.
 3. Infer `read` or `write` from the user's requested outcome. Default to `read` when inspection can satisfy the request.
 4. Invoke `scripts/agybird.mjs` with an absolute `--cwd` and send the task through standard input.
-5. Inspect the normalized result envelope. Treat `partial`, `blocked`, and `error` as distinct outcomes; do not describe them as success.
-6. Independently verify the result according to the selected category.
+5. Inspect the normalized result envelope. Treat `partial`, `needs_permission`, `blocked`, and `error` as distinct outcomes; do not describe them as success.
+6. On `needs_permission`, put the request in front of the user and wait. Never grant a permission on the user's behalf. Once approved, resume with `--conversation` and `--grant` rather than starting over.
+7. Independently verify the result according to the selected category.
 
 Do not change model, effort, agent, sandbox, or credit settings unless the user explicitly asks for that exact change. Never bypass Antigravity permissions.
