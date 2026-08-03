@@ -32,14 +32,9 @@ test('rejects malformed, unknown, and overly broad allow-rules', () => {
   assert.throws(() => parseGrantRule('read_file(/)'), /too broad/);
 });
 
-test('requires a conversation to resume before a grant is accepted', () => {
-  const base = ['--category', 'code', '--cwd', process.cwd()];
-  assert.throws(
-    () => validateRequest(parseArgs([...base, '--grant', 'command(git status)'])),
-    /--grant requires --conversation/,
-  );
+test('accepts a grant against the session being resumed', () => {
   const accepted = validateRequest(parseArgs([
-    ...base,
+    '--category', 'code', '--cwd', process.cwd(),
     '--grant', 'command(git status)',
     '--conversation', 'conv-1',
   ]));

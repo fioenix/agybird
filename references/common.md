@@ -23,7 +23,7 @@ Summarize the local documentation and cite concrete evidence.
 AGYBIRD_PROMPT_7F3A
 ```
 
-Optional runner flags are `--reference`, `--json-schema`, `--conversation`, `--grant`, `--grant-scope`, `--model`, `--effort`, `--agent`, `--sandbox`, and `--timeout`. Pass `--grant` only with a rule the user has explicitly approved; see [troubleshooting.md](troubleshooting.md). Supply `--model`, `--effort`, `--agent`, or `--sandbox` only when the user explicitly requests the corresponding override. Do not change or modify `useG1Credits`; if quota blocks the task, ask the user before changing any credit policy.
+Optional runner flags are `--reference`, `--json-schema`, `--new-session`, `--conversation`, `--grant`, `--grant-scope`, `--model`, `--effort`, `--agent`, `--sandbox`, and `--timeout`. Pass `--grant` only with a rule the user has explicitly approved; see [troubleshooting.md](troubleshooting.md). Supply `--model`, `--effort`, `--agent`, or `--sandbox` only when the user explicitly requests the corresponding override. Do not change or modify `useG1Credits`; if quota blocks the task, ask the user before changing any credit policy.
 
 The runner maps Agybird `read` to Antigravity's official `plan` execution mode and `write` to `accept-edits`. These modes express intent but do not override tool permission rules; a headless action that still needs confirmation is auto-denied.
 
@@ -39,6 +39,14 @@ The runner prints one JSON envelope to stdout:
 - `blocked`: an action was denied and no allow-rule applies.
 - `error`: process, stream, timeout, or artifact validation failed.
 
-Use `conversation_id` with `--conversation` only when continuity is necessary, including after the user grants a permission. Keep stderr as diagnostics; never parse it as the primary result.
+Keep stderr as diagnostics; never parse it as the primary result.
+
+## Stay in one session
+
+One objective is one Antigravity conversation. Every follow-up run — answering a question, applying a granted permission, correcting a mistake, continuing after `partial` — belongs to the conversation already working on that objective. Starting over discards everything the session has read and reasoned about, and pays for it again.
+
+The runner enforces this rather than trusting the caller to remember. It records the conversation per workspace and resumes it automatically, so a plain follow-up invocation continues where the last one stopped. Check `evidence.session_resumed` to confirm continuity actually happened.
+
+Pass `--new-session` only when starting a genuinely new objective, and say so to the user when the previous one is unfinished. Pass `--conversation` only to resume a specific conversation that is not the recorded one.
 
 Official references: [overview](https://antigravity.google/docs/cli/overview), [headless mode](https://antigravity.google/docs/cli/headless), and [best practices](https://antigravity.google/docs/cli/best-practices).

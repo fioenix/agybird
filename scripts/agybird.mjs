@@ -36,6 +36,7 @@ const VALUE_OPTIONS = new Map([
 
 const FLAG_OPTIONS = new Map([
   ['--sandbox', 'sandbox'],
+  ['--new-session', 'newSession'],
 ]);
 
 export function parseArgs(argv) {
@@ -45,6 +46,7 @@ export function parseArgs(argv) {
     grants: [],
     grantScope: 'once',
     sandbox: false,
+    newSession: false,
     timeout: '10m',
   };
 
@@ -129,8 +131,13 @@ export function validateRequest(options) {
   if (!['once', 'remember'].includes(options.grantScope)) {
     throw new Error(`Invalid grant scope: ${options.grantScope}; use once or remember`);
   }
-  if (options.grants.length > 0 && options.conversation === undefined) {
-    throw new Error('--grant requires --conversation; a grant only applies when resuming the run it unblocks');
+  if (options.newSession && options.conversation !== undefined) {
+    throw new Error('--new-session cannot be combined with --conversation');
+  }
+  // A grant exists to unblock a run that is already in progress, so it is only
+  // meaningful against the session being resumed.
+  if (options.grants.length > 0 && options.newSession) {
+    throw new Error('--grant cannot be combined with --new-session; a grant only applies to the run it unblocks');
   }
   for (const rule of options.grants) {
     parseGrantRule(rule);
@@ -218,6 +225,35 @@ export function ensureProject(cwd, directory = PROJECTS_DIRECTORY) {
     updatedAt: new Date().toISOString(),
   }, null, 1));
   return { id, path };
+}
+
+const STATE_DIRECTORY = join(homedir(), '.agybird');
+
+// One objective is one conversation. Threading the id back by hand is a
+// convention the calling agent can silently drop, and a dropped id restarts the
+// work from nothing, so the runner remembers the conversation per workspace and
+// resumes it unless a new session is asked for explicitly.
+export function readSession(cwd, directory = STATE_DIRECTORY) {
+  const sessions = readJsonOrNull(join(directory, 'sessions.json'));
+  const recorded = sessions?.[workspaceUri(cwd)];
+  return typeof recorded === 'string' && recorded !== '' ? recorded : null;
+}
+
+export function writeSession(cwd, conversationId, directory = STATE_DIRECTORY) {
+  mkdirSync(directory, { recursive: true });
+  const path = join(directory, 'sessions.json');
+  const sessions = readJsonOrNull(path) ?? {};
+  sessions[workspaceUri(cwd)] = conversationId;
+  writeFileSync(path, JSON.stringify(sessions, null, 1));
+  return path;
+}
+
+// Explicit beats implicit: a caller naming a conversation, or asking for a new
+// one, always overrides what the runner has recorded.
+export function resolveSession(options, directory = STATE_DIRECTORY) {
+  if (options.conversation !== undefined) return options.conversation;
+  if (options.newSession) return null;
+  return readSession(options.cwd, directory);
 }
 
 // Antigravity reads project grants from ~/.gemini/config/projects/<id>.json and
@@ -574,6 +610,7 @@ export function makeEnvelope({
   artifacts = parsed.artifacts,
   agyBinary,
   agyVersion,
+  sessionResumed = false,
 }) {
   return {
     schema_version: 1,
@@ -593,6 +630,7 @@ export function makeEnvelope({
     evidence: {
       agy_exit_code: exitCode,
       agy_status: parsed.agyStatus,
+      session_resumed: sessionResumed,
       ...(agyBinary === undefined ? {} : { agy_binary: agyBinary }),
       ...(agyVersion === undefined ? {} : { agy_version: agyVersion }),
     },
@@ -821,7 +859,7 @@ function fatalEnvelope(category, error) {
     artifacts: [],
     warnings: [error.message],
     usage: null,
-    evidence: { agy_exit_code: null, agy_status: null },
+    evidence: { agy_exit_code: null, agy_status: null, session_resumed: false },
   };
 }
 
@@ -834,6 +872,15 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
     const delegatedPrompt = buildDelegationPrompt(options, userPrompt);
     const project = ensureProject(options.cwd, env.AGYBIRD_PROJECTS_DIR || PROJECTS_DIRECTORY);
     options.project = project.id;
+
+    const stateDirectory = env.AGYBIRD_STATE_DIR || STATE_DIRECTORY;
+    const resumed = resolveSession(options, stateDirectory);
+    if (resumed !== null) {
+      options.conversation = resumed;
+    }
+    if (options.grants.length > 0 && resumed === null) {
+      throw new Error('--grant needs a session to resume, and none was recorded for this workspace');
+    }
     if (options.grants.length > 0) {
       grantState = applyGrants(project.path, options.grants);
     }
@@ -841,6 +888,9 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
     const parser = createStreamParser();
     parser.push(execution.stdout);
     const parsed = parser.finish();
+    if (parsed.conversationId) {
+      writeSession(options.cwd, parsed.conversationId, stateDirectory);
+    }
     let outcome = classifyOutcome({ parsed, exitCode: execution.exitCode, stderr: execution.stderr });
 
     if (execution.timedOut) {
@@ -867,6 +917,7 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
       artifacts,
       agyBinary: execution.binaryPath,
       agyVersion: execution.version,
+      sessionResumed: resumed !== null,
     });
     process.stdout.write(`${JSON.stringify(envelope)}\n`);
     if (execution.stderr) {
