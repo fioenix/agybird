@@ -4,6 +4,8 @@ All notable changes to Agybird are documented in this file.
 
 ## Unreleased
 
+- Require an allow-rule target to be an escaped literal instead of screening four literal spellings, so `command(.+)` and `read_file(/.*)` are no longer accepted as narrow rules ([#4](https://github.com/fioenix/agybird/issues/4)).
+
 - Report denied actions as `needs_permission` with a `permission_requests[]` entry naming the tool, target, and allow-rule, instead of an unexplained `blocked`.
 - Keep `blocked` for denials no allow-rule can authorize.
 - Document the verified Antigravity allow-rule syntax and the two locations rules are read from.

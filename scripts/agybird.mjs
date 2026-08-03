@@ -153,6 +153,30 @@ export function validateRequest(options) {
 const PROJECTS_DIRECTORY = join(homedir(), '.gemini', 'config', 'projects');
 const RULE_KINDS = new Set(['command', 'read_file', 'write_file', 'mcp', 'read_url', 'execute_url', 'unsandboxed']);
 const RULE_PATTERN = /^([a-z_]+)\(([\s\S]+)\)$/;
+const RULE_METACHARACTERS = new Set(['.', '*', '+', '?', '^', '$', '{', '}', '(', ')', '|', '[', ']']);
+
+// agy matches a rule target as a regular expression, so "too broad" cannot be a
+// list of spellings: `.+` and `/.*` authorize everything just as `.*` does, and
+// there is always another way to write it. Every rule Agybird suggests comes
+// from escapeRuleTarget and is therefore a plain literal, so demand exactly
+// that — metacharacters may appear escaped, never live. Returns the literal the
+// target denotes, or null when it is a pattern rather than a literal.
+export function literalRuleTarget(target) {
+  let literal = '';
+  for (let index = 0; index < target.length; index += 1) {
+    const character = target[index];
+    if (character === '\\') {
+      // A trailing backslash escapes nothing and is not a valid target.
+      if (index + 1 >= target.length) return null;
+      index += 1;
+      literal += target[index];
+      continue;
+    }
+    if (RULE_METACHARACTERS.has(character)) return null;
+    literal += character;
+  }
+  return literal;
+}
 
 // A grant always originates from a user decision on a reported permission
 // request. The runner never invents one, and refuses targets broad enough to
@@ -164,7 +188,13 @@ export function parseGrantRule(rule) {
   if (!RULE_KINDS.has(kind)) {
     throw new Error(`Unsupported allow-rule kind: ${kind}`);
   }
-  if (['*', '/', '~', '.*'].includes(target.trim())) {
+  const literal = literalRuleTarget(target);
+  if (literal === null) {
+    throw new Error(`Allow-rule target must be a literal, not a pattern: ${rule}`);
+  }
+  // Without a letter or digit there is nothing identifying left to match on:
+  // `/`, `~`, and whitespace name the whole filesystem rather than one resource.
+  if (!/[\p{L}\p{N}]/u.test(literal)) {
     throw new Error(`Allow-rule target is too broad: ${rule}`);
   }
   return { kind, target };
