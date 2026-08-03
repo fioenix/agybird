@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import test from 'node:test';
 
 import {
@@ -32,8 +32,7 @@ test('records a conversation per workspace and reads it back', () => {
     assert.equal(readSession(workspace, directory), 'conv-3', 'the newest id replaces the old one');
     assert.equal(readSession(other, directory), 'conv-2', 'unrelated workspaces survive the write');
 
-    const stored = JSON.parse(readFileSync(join(directory, 'sessions.json'), 'utf8'));
-    assert.equal(Object.keys(stored).length, 2, 'one entry per workspace');
+    assert.equal(readdirSync(join(directory, 'sessions')).length, 2, 'one file per workspace, never a shared map');
   } finally {
     rmSync(directory, { recursive: true, force: true });
     rmSync(workspace, { recursive: true, force: true });
@@ -96,33 +95,39 @@ test('accepts a grant without a hand-threaded conversation id', () => {
   assert.equal(options.conversation, undefined);
 });
 
-test('tolerates a corrupt session store instead of failing the run', () => {
+test('treats an unreadable record as no session rather than failing the run', () => {
   const directory = temporaryDirectory();
   const workspace = temporaryDirectory();
+  const other = temporaryDirectory();
   try {
-    writeSession(workspace, 'conv-1', directory);
-    writeFileSync(join(directory, 'sessions.json'), '{not json');
+    const path = writeSession(workspace, 'conv-1', directory);
+    writeSession(other, 'conv-other', directory);
+    writeFileSync(path, '{not json');
+
     assert.equal(readSession(workspace, directory), null);
+    assert.equal(
+      readSession(other, directory),
+      'conv-other',
+      'one damaged record cannot cost another workspace its session',
+    );
+
+    writeSession(workspace, 'conv-2', directory);
+    assert.equal(readSession(workspace, directory), 'conv-2', 'the next run simply records its own');
   } finally {
     rmSync(directory, { recursive: true, force: true });
     rmSync(workspace, { recursive: true, force: true });
+    rmSync(other, { recursive: true, force: true });
   }
 });
 
-test('keeps a corrupt store aside rather than silently discarding it', () => {
+test('ignores a record that belongs to a different workspace', () => {
   const directory = temporaryDirectory();
   const workspace = temporaryDirectory();
   try {
-    writeSession(workspace, 'conv-1', directory);
-    writeFileSync(join(directory, 'sessions.json'), '{not json');
-    writeSession(workspace, 'conv-2', directory);
+    const path = writeSession(workspace, 'conv-1', directory);
+    writeFileSync(path, JSON.stringify({ workspace: 'file:///somewhere/else', conversation: 'conv-theirs' }));
 
-    assert.equal(readSession(workspace, directory), 'conv-2', 'the run still records its own session');
-    assert.equal(
-      readFileSync(join(directory, 'sessions.json.corrupt'), 'utf8'),
-      '{not json',
-      'the unreadable store is preserved for inspection',
-    );
+    assert.equal(readSession(workspace, directory), null, 'a digest collision must not hand over another session');
   } finally {
     rmSync(directory, { recursive: true, force: true });
     rmSync(workspace, { recursive: true, force: true });
@@ -140,8 +145,11 @@ test('treats a symlinked workspace as the same session as its real path', () => 
     assert.equal(readSession(link, directory), 'conv-1', 'the spelling of the path must not lose the session');
 
     writeSession(link, 'conv-2', directory);
-    const stored = JSON.parse(readFileSync(join(directory, 'sessions.json'), 'utf8'));
-    assert.equal(Object.keys(stored).length, 1, 'one directory holds one entry, not one per spelling');
+    assert.equal(
+      readdirSync(join(directory, 'sessions')).length,
+      1,
+      'one directory holds one record, not one per spelling',
+    );
     assert.equal(readSession(real, directory), 'conv-2');
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -153,8 +161,8 @@ test('leaves no temporary file behind after recording a session', () => {
   const directory = temporaryDirectory();
   const workspace = temporaryDirectory();
   try {
-    writeSession(workspace, 'conv-1', directory);
-    assert.deepEqual(readdirSync(directory), ['sessions.json']);
+    const path = writeSession(workspace, 'conv-1', directory);
+    assert.deepEqual(readdirSync(join(directory, 'sessions')), [basename(path)]);
   } finally {
     rmSync(directory, { recursive: true, force: true });
     rmSync(workspace, { recursive: true, force: true });

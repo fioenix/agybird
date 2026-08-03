@@ -89,7 +89,9 @@ Rules live in one of two places, both outside the repository:
 
 A conversation is bound to its project when it is created, so the runner resolves a project for the workspace on every run and passes `--project`. The first Agybird run in a repository Antigravity has not seen before therefore creates one small file under `~/.gemini/config/projects/`. That file persists; only the grants inside it follow `--grant-scope`.
 
-The runner also keeps the workspace's conversation id in `~/.agybird/sessions.json` so a follow-up run resumes instead of starting over. Deleting that file only forces the next run to begin a new conversation; it destroys nothing in Antigravity.
+The runner also keeps the workspace's conversation id under `~/.agybird/sessions/`, one file per workspace, so a follow-up run resumes instead of starting over. Deleting a record only forces the next run to begin a new conversation; it destroys nothing in Antigravity.
+
+While a grant is applied the runner holds a lock for that workspace, because a grant is visible to every conversation under the same Antigravity project. A run that would use a different conversation is refused until the grant is released, and reports which of the two it was. A run resuming the same conversation proceeds, since the grant was approved for it.
 
 Nothing inside the repository can grant a permission on `agy` 1.1.9 headless. Writing `<repo>/.gemini/antigravity-cli/settings.json` has no effect; that path does not exist in the CLI. Antigravity's workspace customization root `.agents/` carries rules, skills, plugins, and hooks rather than allow-rules, and a `PreToolUse` hook returning `{"decision": "allow"}` would grant permission in principle — but under `agy -p`, workspace customizations were not loaded at all in testing. A `.agents/hooks.json` was ignored in favour of `~/.gemini/config/hooks.json`, and neither `AGENTS.md` nor `.agents/rules/*.md` reached the model, which answered `NONE` when asked to list the rules it had loaded. Adding the workspace to `trustedWorkspaces` changed nothing, so this is not a trust gate. Do not rely on repository-local configuration in headless mode.
 

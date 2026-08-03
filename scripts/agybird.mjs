@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   accessSync,
   closeSync,
@@ -18,7 +18,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, delimiter, extname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, delimiter, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const VALUE_OPTIONS = new Map([
@@ -278,24 +278,31 @@ function sessionKey(cwd) {
   }
 }
 
+// One file per workspace rather than one shared map. A shared map had to be
+// read, merged and rewritten, so two runs finishing at the same moment could
+// drop each other's entry, and a single unreadable file cost every workspace its
+// session. Separate files make both impossible: a run only ever touches its own.
+function workspaceDigest(cwd) {
+  return createHash('sha256').update(sessionKey(cwd)).digest('hex').slice(0, 32);
+}
+
+function sessionPath(cwd, directory) {
+  return join(directory, 'sessions', `${workspaceDigest(cwd)}.json`);
+}
+
 export function readSession(cwd, directory = STATE_DIRECTORY) {
-  const sessions = readJsonOrNull(join(directory, 'sessions.json'));
-  const recorded = sessions?.[sessionKey(cwd)];
+  const record = readJsonOrNull(sessionPath(cwd, directory));
+  // The workspace is stored alongside the id so a digest collision cannot hand
+  // one workspace another's conversation.
+  if (record?.workspace !== sessionKey(cwd)) return null;
+  const recorded = record?.conversation;
   return typeof recorded === 'string' && recorded !== '' ? recorded : null;
 }
 
 export function writeSession(cwd, conversationId, directory = STATE_DIRECTORY) {
-  mkdirSync(directory, { recursive: true });
-  const path = join(directory, 'sessions.json');
-  const sessions = readJsonOrNull(path);
-  // An unreadable store cannot be merged into, and overwriting it would drop
-  // every other workspace without a trace. Keep it for inspection instead.
-  if (sessions === null && statOrNull(path)) {
-    writeFileSync(`${path}.corrupt`, readFileSync(path));
-  }
-  const merged = sessions ?? {};
-  merged[sessionKey(cwd)] = conversationId;
-  writeJsonAtomically(path, merged);
+  const path = sessionPath(cwd, directory);
+  mkdirSync(dirname(path), { recursive: true });
+  writeJsonAtomically(path, { workspace: sessionKey(cwd), conversation: conversationId });
   return path;
 }
 
@@ -330,6 +337,51 @@ export function journalGrant(state, directory) {
 }
 
 export function clearGrantJournal(path) {
+  if (path) rmSync(path, { force: true });
+}
+
+// A grant lives in a project file that agy reads for every session under that
+// project, so while one is applied another conversation in the same workspace
+// inherits it. Isolating grants per conversation would mean a project file per
+// objective: those grow without bound in the user's Antigravity configuration
+// and cannot be deleted afterwards, because a conversation stays bound to its
+// project for good. Excluding the other conversation for the length of the grant
+// leaves nothing behind instead.
+function grantLockPath(cwd, directory) {
+  return join(directory, 'grant-locks', `${workspaceDigest(cwd)}.json`);
+}
+
+// The holder of a live grant in this workspace, or null. A lock left by a
+// process that is gone is removed rather than blocking the workspace forever.
+export function liveGrantLock(cwd, directory = STATE_DIRECTORY, isRunning = processIsRunning) {
+  const path = grantLockPath(cwd, directory);
+  const holder = readJsonOrNull(path);
+  if (holder && Number.isInteger(holder.pid) && isRunning(holder.pid)) return holder;
+  if (statOrNull(path)) rmSync(path, { force: true });
+  return null;
+}
+
+export function acquireGrantLock(cwd, conversationId, directory = STATE_DIRECTORY, isRunning = processIsRunning) {
+  const path = grantLockPath(cwd, directory);
+  mkdirSync(dirname(path), { recursive: true });
+  if (liveGrantLock(cwd, directory, isRunning)) return null;
+  let handle;
+  try {
+    // Exclusive create is the only primitive here that cannot race.
+    handle = openSync(path, 'wx');
+  } catch (error) {
+    if (error?.code === 'EEXIST') return null;
+    throw error;
+  }
+  try {
+    writeFileSync(handle, JSON.stringify({ pid: process.pid, conversation: conversationId ?? null }, null, 1));
+  } finally {
+    closeSync(handle);
+  }
+  return path;
+}
+
+export function releaseGrantLock(path) {
   if (path) rmSync(path, { force: true });
 }
 
@@ -1002,6 +1054,7 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
   let options;
   let grantState = null;
   let journalPath = null;
+  let lockPath = null;
   let onSignal = null;
 
   const releaseGrant = () => {
@@ -1012,6 +1065,8 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
     }
     clearGrantJournal(journalPath);
     journalPath = null;
+    releaseGrantLock(lockPath);
+    lockPath = null;
   };
 
   try {
@@ -1033,7 +1088,22 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
     if (options.grants.length > 0 && resumed === null) {
       throw new Error('--grant needs a session to resume, and none was recorded for this workspace');
     }
+
+    // A grant applied by another run is visible to every conversation under the
+    // same project, so a run on a different conversation must not start while one
+    // is live. The conversation the grant was approved for may proceed.
+    const holder = liveGrantLock(options.cwd, stateDirectory);
+    if (holder && holder.conversation !== resumed) {
+      throw new Error(
+        'another run in this workspace is holding a one-time allow-rule for a different conversation; retry once it finishes',
+      );
+    }
+
     if (options.grants.length > 0) {
+      lockPath = acquireGrantLock(options.cwd, resumed, stateDirectory);
+      if (lockPath === null) {
+        throw new Error('another run in this workspace is already holding a one-time allow-rule; retry once it finishes');
+      }
       // Intent first: the journal has to exist before the grant does, or a kill
       // in between leaves a rule on disk that nothing knows how to undo.
       if (options.grantScope === 'once') {

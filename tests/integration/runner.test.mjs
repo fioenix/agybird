@@ -288,6 +288,67 @@ test('reports a failure through a symlinked path instead of exiting silently', a
   assert.equal(parseSingleEnvelope(result.stdout).status, 'error');
 });
 
+test('refuses to start a different conversation while another run holds a grant', async () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'agybird-lock-cwd-'));
+  const projects = mkdtempSync(join(tmpdir(), 'agybird-lock-projects-'));
+  const state = mkdtempSync(join(tmpdir(), 'agybird-lock-state-'));
+  const dirs = { cwd, projectsDir: projects, stateDir: state };
+
+  // A grant only applies to a session being resumed, so record one first.
+  await runRunner({ ...dirs, prompt: 'CASE_SUCCESS' });
+
+  const holder = spawn(
+    process.execPath,
+    [
+      runnerPath, '--category', 'general', '--cwd', cwd, '--mode', 'read', '--timeout', '30s',
+      '--grant', 'command(git status)', '--grant-scope', 'once',
+    ],
+    {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ''}`,
+        AGYBIRD_PROJECTS_DIR: projects,
+        AGYBIRD_STATE_DIR: state,
+      },
+      stdio: ['pipe', 'ignore', 'ignore'],
+    },
+  );
+  holder.stdin.end('CASE_DELAY');
+
+  // Wait for the lock itself rather than guessing at timing.
+  await new Promise((resolve, reject) => {
+    const deadline = Date.now() + 10_000;
+    const poll = setInterval(() => {
+      let held = [];
+      try { held = readdirSync(join(state, 'grant-locks')); } catch { held = []; }
+      if (held.length > 0) {
+        clearInterval(poll);
+        resolve();
+      } else if (Date.now() > deadline) {
+        clearInterval(poll);
+        reject(new Error('the grant lock was never taken'));
+      }
+    }, 25);
+  });
+
+  const intruder = await runRunner({ ...dirs, extraArgs: ['--new-session'] });
+  const envelope = parseSingleEnvelope(intruder.stdout);
+
+  assert.equal(intruder.exitCode, 1);
+  assert.equal(envelope.status, 'error');
+  assert.match(envelope.warnings.join('\n'), /different conversation/);
+
+  const exited = new Promise((resolve) => holder.on('close', resolve));
+  holder.kill('SIGTERM');
+  await exited;
+
+  // The same conversation may proceed: the grant was approved for it.
+  const sameSession = await runRunner({ ...dirs, prompt: 'CASE_SUCCESS' });
+  assert.equal(parseSingleEnvelope(sameSession.stdout).status, 'success');
+  assert.deepEqual(readdirSync(join(state, 'grant-locks')), [], 'the lock is released with the grant');
+});
+
 test('validates an absolute reference image before process execution', async () => {
   const referenceRoot = mkdtempSync(join(tmpdir(), 'agybird-reference-'));
   const reference = join(referenceRoot, 'reference.png');
