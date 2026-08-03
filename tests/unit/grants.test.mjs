@@ -81,6 +81,25 @@ test('creates a workspace project once and reuses it afterwards', () => {
   }
 });
 
+test('recognizes a non-git project recorded as a plain folderUri', () => {
+  const directory = temporaryDirectory();
+  const workspace = temporaryDirectory();
+  const projectPath = join(directory, 'plain.json');
+  writeFileSync(projectPath, JSON.stringify({
+    id: 'plain',
+    name: 'plain',
+    projectResources: { resources: [{ folderUri: pathToFileURL(workspace).href }] },
+  }, null, 1));
+
+  try {
+    assert.equal(findProjectForWorkspace(workspace, directory)?.path, projectPath);
+    assert.equal(ensureProject(workspace, directory).id, 'plain', 'no duplicate project is created');
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 test('adds grants to the workspace project and restores its exact prior content', () => {
   const directory = temporaryDirectory();
   const workspace = temporaryDirectory();
