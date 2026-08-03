@@ -160,6 +160,68 @@ test('maps view_file and list_dir denials onto read_file allow-rules', () => {
   assert.equal(outcome.permissionRequests[0].suggested_rule, 'read_file(/repo/src/main\\.ts)');
 });
 
+function deniedCommand(commandLine) {
+  const parser = createStreamParser();
+  parser.push([
+    JSON.stringify({ event: 'init', conversation_id: 'conv-long' }),
+    JSON.stringify({
+      event: 'step_update',
+      step_update: {
+        step_index: 1,
+        state: 'ERROR',
+        step_type: 'tool',
+        tool_name: 'run_command',
+        tool_info: {
+          name: 'run_command',
+          parameters: { CommandLine: commandLine },
+          error: { type: 'TOOL_ERROR', message: 'User denied permission to run command' },
+        },
+      },
+    }),
+    JSON.stringify({ event: 'result', result: { status: 'SUCCESS', response: '' } }),
+    '',
+  ].join('\n'));
+  return classifyOutcome({ parsed: parser.finish(), exitCode: 0, stderr: '' }).permissionRequests[0];
+}
+
+test('suggests a rule that actually matches a multi-line command', () => {
+  const command = 'gh pr create --title "T" --body "Line one.\nLine two.\n\n- bullet"';
+  const request = deniedCommand(command);
+
+  const target = request.suggested_rule.slice('command('.length, -1);
+  assert.ok(
+    new RegExp(target).test(command),
+    'a rule built from a flattened target can never authorize the command it came from',
+  );
+});
+
+test('shows a shortened target while keeping the rule complete, and says it did', () => {
+  const body = 'x'.repeat(500);
+  const command = `gh pr create --body "${body}"`;
+  const request = deniedCommand(command);
+
+  assert.equal(request.target.length, 300, 'the rendered target stays bounded');
+  assert.equal(request.target_truncated, true, 'the caller is told it is not seeing everything');
+  assert.ok(request.suggested_rule.includes(body), 'the rule still covers the whole command');
+  assert.equal(request.grantable, true);
+});
+
+test('reports a short single-line target as complete', () => {
+  const request = deniedCommand('git status');
+
+  assert.equal(request.target, 'git status');
+  assert.equal(request.target_truncated, false);
+  assert.equal(request.suggested_rule, 'command(git status)');
+});
+
+test('withholds a suggestion when the target is too long to review', () => {
+  const request = deniedCommand(`gh pr create --body "${'x'.repeat(3000)}"`);
+
+  assert.equal(request.suggested_rule, null, 'no rule is offered that nobody could check');
+  assert.equal(request.target_truncated, true);
+  assert.equal(request.grantable, true, 'an allow-rule still exists for the action');
+});
+
 test('classifies permission denial from stderr as blocked despite exit zero', () => {
   const parsed = parseFixture('success.ndjson');
   const outcome = classifyOutcome({
