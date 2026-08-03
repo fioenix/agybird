@@ -28,6 +28,9 @@ if (prompt.includes('CASE_DELAY')) {
     step: { id: 'blocked-1', type: 'tool', tool_name: 'write_file', status: 'denied' },
   });
   emit({ type: 'result', status: 'success', response: 'blocked' });
+} else if (prompt.includes('CASE_ECHO_CONVERSATION')) {
+  const index = process.argv.indexOf('--conversation');
+  emit({ type: 'result', status: 'success', response: index === -1 ? 'none' : process.argv[index + 1] });
 } else if (prompt.includes('CASE_NONZERO')) {
   process.stderr.write('provider failed\n');
   process.exitCode = 7;

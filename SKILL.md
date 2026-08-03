@@ -23,9 +23,10 @@ Use the official Antigravity CLI as a delegated worker while keeping its authent
 1. Resolve this skill's absolute directory and verify Node.js 20 or newer.
 2. Check `agy --version`. If `agy` is missing, pause and ask for confirmation before using an official installer.
 3. Infer `read` or `write` from the user's requested outcome. Default to `read` when inspection can satisfy the request.
-4. Invoke `scripts/agybird.mjs` with an absolute `--cwd` and send the task through standard input.
+4. Invoke `scripts/agybird.mjs` with an absolute `--cwd` and send the task through standard input. Add `--new-session` on the first run of a new objective, and never on a follow-up.
 5. Inspect the normalized result envelope. Treat `partial`, `needs_permission`, `blocked`, and `error` as distinct outcomes; do not describe them as success.
-6. On `needs_permission`, put the request in front of the user and wait. Never grant a permission on the user's behalf. Once approved, resume with `--conversation` and `--grant` rather than starting over.
-7. Independently verify the result according to the selected category.
+6. Keep the whole objective in one conversation. The runner resumes the workspace's session on its own, so a follow-up needs no extra flag; confirm it worked through `evidence.session_resumed`.
+7. On `needs_permission`, put the request in front of the user and wait. Never grant a permission on the user's behalf. Once approved, run again with `--grant` and let the session resume rather than starting over.
+8. Independently verify the result according to the selected category.
 
 Do not change model, effort, agent, sandbox, or credit settings unless the user explicitly asks for that exact change. Never bypass Antigravity permissions.

@@ -13,14 +13,23 @@ const fakeAgyPath = join(projectRoot, 'tests', 'fixtures', 'fake-agy.mjs');
 const fakeBin = mkdtempSync(join(tmpdir(), 'agybird-fake-bin-'));
 // Keep the runner's workspace-project bookkeeping out of the real Antigravity config.
 const fakeProjects = mkdtempSync(join(tmpdir(), 'agybird-fake-projects-'));
+const fakeState = mkdtempSync(join(tmpdir(), 'agybird-fake-state-'));
 const fakeCommandPath = join(fakeBin, 'agy');
 copyFileSync(fakeAgyPath, fakeCommandPath);
 chmodSync(fakeCommandPath, 0o755);
 
-function runRunner({ category = 'general', mode = 'read', prompt = 'CASE_SUCCESS', timeout = '5s', references = [] } = {}) {
-  const cwd = mkdtempSync(join(tmpdir(), 'agybird-runner-'));
+function runRunner({
+  category = 'general',
+  mode = 'read',
+  prompt = 'CASE_SUCCESS',
+  timeout = '5s',
+  references = [],
+  cwd = mkdtempSync(join(tmpdir(), 'agybird-runner-')),
+  extraArgs = [],
+} = {}) {
   const args = [runnerPath, '--category', category, '--cwd', cwd, '--mode', mode, '--timeout', timeout];
   for (const reference of references) args.push('--reference', reference);
+  args.push(...extraArgs);
 
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, {
@@ -29,6 +38,7 @@ function runRunner({ category = 'general', mode = 'read', prompt = 'CASE_SUCCESS
         ...process.env,
         PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ''}`,
         AGYBIRD_PROJECTS_DIR: fakeProjects,
+        AGYBIRD_STATE_DIR: fakeState,
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -131,6 +141,39 @@ test('keeps failed image tool calls partial when a terminal response exists', as
   assert.equal(result.exitCode, 0);
   assert.equal(envelope.status, 'partial');
   assert.equal(envelope.artifacts.length, 0);
+});
+
+test('resumes the same conversation on a later run in the same workspace', async () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'agybird-continuity-'));
+
+  const first = await runRunner({ prompt: 'CASE_ECHO_CONVERSATION', cwd });
+  const firstEnvelope = parseSingleEnvelope(first.stdout);
+  assert.equal(firstEnvelope.response, 'none', 'the first run starts a conversation');
+  assert.equal(firstEnvelope.evidence.session_resumed, false);
+  assert.equal(firstEnvelope.conversation_id, 'fake-conversation');
+
+  const second = await runRunner({ prompt: 'CASE_ECHO_CONVERSATION', cwd });
+  const secondEnvelope = parseSingleEnvelope(second.stdout);
+  assert.equal(
+    secondEnvelope.response,
+    'fake-conversation',
+    'the runner resumes without the caller threading the id back',
+  );
+  assert.equal(secondEnvelope.evidence.session_resumed, true);
+
+  const fresh = await runRunner({ prompt: 'CASE_ECHO_CONVERSATION', cwd, extraArgs: ['--new-session'] });
+  const freshEnvelope = parseSingleEnvelope(fresh.stdout);
+  assert.equal(freshEnvelope.response, 'none', '--new-session starts over on purpose');
+  assert.equal(freshEnvelope.evidence.session_resumed, false);
+});
+
+test('refuses a grant when no session was ever recorded for the workspace', async () => {
+  const result = await runRunner({ extraArgs: ['--grant', 'command(git status)'] });
+  const envelope = parseSingleEnvelope(result.stdout);
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(envelope.status, 'error');
+  assert.match(envelope.warnings.join('\n'), /needs a session to resume/);
 });
 
 test('validates an absolute reference image before process execution', async () => {

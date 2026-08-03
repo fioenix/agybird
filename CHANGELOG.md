@@ -10,6 +10,9 @@ All notable changes to Agybird are documented in this file.
 - Add `--grant` and `--grant-scope` to resume a blocked session with a user-approved allow-rule, written as a repository-scoped Antigravity project grant. `once` reverts the rule when the run ends; `remember` keeps it.
 - Resolve an Antigravity project for the workspace on every run so a later grant reaches the resumed conversation.
 - Take the requested rule from the `ask_permission` tool payload when agy asks for a grant itself.
+- Keep one objective in one Antigravity conversation: the runner records the workspace's conversation and resumes it automatically, reporting the outcome as `evidence.session_resumed`.
+- Add `--new-session` to start a fresh conversation deliberately. `--grant` no longer needs a hand-threaded `--conversation`, and is refused when there is no session to unblock.
+- Record why the Antigravity Python SDK was not adopted as a runner backend in `docs/sdk-evaluation.md`.
 
 ## 0.1.1 - 2026-08-02
 
