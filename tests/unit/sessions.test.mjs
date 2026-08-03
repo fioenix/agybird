@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 
 import {
@@ -15,12 +14,6 @@ import {
 
 function temporaryDirectory() {
   return mkdtempSync(join(tmpdir(), 'agybird-sessions-'));
-}
-
-// The store keys on the canonical path, so the expectation has to resolve the
-// same way; on macOS a temporary directory is reached through a symlink.
-function key(cwd) {
-  return pathToFileURL(realpathSync(cwd)).href.replace(/\/$/, '');
 }
 
 test('records a conversation per workspace and reads it back', () => {
@@ -36,9 +29,11 @@ test('records a conversation per workspace and reads it back', () => {
 
     writeSession(other, 'conv-2', directory);
     writeSession(workspace, 'conv-3', directory);
+    assert.equal(readSession(workspace, directory), 'conv-3', 'the newest id replaces the old one');
+    assert.equal(readSession(other, directory), 'conv-2', 'unrelated workspaces survive the write');
+
     const stored = JSON.parse(readFileSync(join(directory, 'sessions.json'), 'utf8'));
-    assert.equal(stored[key(workspace)], 'conv-3', 'the newest id replaces the old one');
-    assert.equal(stored[key(other)], 'conv-2', 'unrelated workspaces survive the write');
+    assert.equal(Object.keys(stored).length, 2, 'one entry per workspace');
   } finally {
     rmSync(directory, { recursive: true, force: true });
     rmSync(workspace, { recursive: true, force: true });
@@ -139,7 +134,8 @@ test('treats a symlinked workspace as the same session as its real path', () => 
   const real = temporaryDirectory();
   const link = join(temporaryDirectory(), 'alias');
   try {
-    symlinkSync(real, link);
+    // A directory symlink needs elevated rights on Windows; a junction does not.
+    symlinkSync(real, link, process.platform === 'win32' ? 'junction' : 'dir');
     writeSession(real, 'conv-1', directory);
     assert.equal(readSession(link, directory), 'conv-1', 'the spelling of the path must not lose the session');
 
