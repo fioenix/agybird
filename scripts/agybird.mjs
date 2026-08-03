@@ -1101,9 +1101,19 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
   }
 }
 
-const isDirectExecution = process.argv[1]
-  && import.meta.url === pathToFileURL(process.argv[1]).href;
+// Node resolves import.meta.url to the real path, while argv[1] keeps whatever
+// the caller typed. Skills are installed as a symlink, so comparing the two
+// literally left the runner doing nothing at all and exiting 0 in silence.
+export function isDirectExecution(entry = process.argv[1], moduleUrl = import.meta.url) {
+  if (!entry) return false;
+  if (moduleUrl === pathToFileURL(entry).href) return true;
+  try {
+    return moduleUrl === pathToFileURL(realpathSync(entry)).href;
+  } catch {
+    return false;
+  }
+}
 
-if (isDirectExecution) {
+if (isDirectExecution()) {
   main();
 }

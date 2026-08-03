@@ -4,6 +4,10 @@ All notable changes to Agybird are documented in this file.
 
 ## Unreleased
 
+## 0.2.1 - 2026-08-03
+
+- Run when invoked through a symlinked path. `import.meta.url` resolves to the real path while `argv[1]` keeps the path as typed, so the entry-point guard never matched and the runner exited 0 without producing an envelope or a single line of output. Skills are installed as a symlink, so every release so far has been silently inert on its own installed path; only invocations against the repository checkout worked.
+
 ## 0.2.0 - 2026-08-03
 
 Denied actions are now explained and recoverable, and one objective stays in one
