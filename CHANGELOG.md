@@ -4,6 +4,7 @@ All notable changes to Agybird are documented in this file.
 
 ## Unreleased
 
+- Repair a `once` grant that an interrupted run left on disk: the undo is journalled before the grant is applied, the next run removes anything abandoned and reports it in `warnings[]`, and `SIGINT`/`SIGTERM` now clean up immediately ([#5](https://github.com/fioenix/agybird/issues/5)).
 - Require an allow-rule target to be an escaped literal instead of screening four literal spellings, so `command(.+)` and `read_file(/.*)` are no longer accepted as narrow rules ([#4](https://github.com/fioenix/agybird/issues/4)).
 
 - Report denied actions as `needs_permission` with a `permission_requests[]` entry naming the tool, target, and allow-rule, instead of an unexplained `blocked`.
