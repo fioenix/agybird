@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmodSync, copyFileSync, mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdtempSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -235,6 +235,40 @@ test('removes a once-grant that a killed run left behind, on the next run', asyn
     'the next run removes the abandoned rule',
   );
   assert.match(envelope.warnings.join('\n'), /one-time allow-rule/i, 'and says so');
+});
+
+test('runs when invoked through a symlinked path, the way the skill is installed', async () => {
+  const linkRoot = mkdtempSync(join(tmpdir(), 'agybird-linked-'));
+  const linkedSkill = join(linkRoot, 'agybird');
+  // `skills add` symlinks the whole skill directory into the agent's skills folder.
+  symlinkSync(join(projectRoot), linkedSkill, process.platform === 'win32' ? 'junction' : 'dir');
+  const linkedRunner = join(linkedSkill, 'scripts', 'agybird.mjs');
+  const cwd = mkdtempSync(join(tmpdir(), 'agybird-linked-cwd-'));
+
+  const result = await new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      [linkedRunner, '--category', 'general', '--cwd', cwd, '--mode', 'read', '--timeout', '5s'],
+      {
+        cwd: projectRoot,
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ''}`,
+          AGYBIRD_PROJECTS_DIR: fakeProjects,
+          AGYBIRD_STATE_DIR: fakeState,
+        },
+        stdio: ['pipe', 'pipe', 'pipe'],
+      },
+    );
+    let stdout = '';
+    child.stdout.setEncoding('utf8').on('data', (chunk) => { stdout += chunk; });
+    child.on('error', reject);
+    child.on('close', (exitCode) => resolve({ stdout, exitCode }));
+    child.stdin.end('CASE_SUCCESS');
+  });
+
+  assert.notEqual(result.stdout.trim(), '', 'a symlinked runner must not exit silently');
+  assert.equal(parseSingleEnvelope(result.stdout).status, 'success');
 });
 
 test('validates an absolute reference image before process execution', async () => {
