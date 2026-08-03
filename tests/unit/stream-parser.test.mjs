@@ -115,6 +115,22 @@ test('keeps a denial ungrantable when agy states allow-rules do not apply', () =
   assert.equal(outcome.permissionRequests[0].grantable, false);
 });
 
+test('maps the real agy file-writing tools onto write_file allow-rules', () => {
+  for (const tool of ['write_to_file', 'replace_file_content', 'multi_replace_file_content']) {
+    const parser = createStreamParser();
+    parser.push([
+      '{"event":"init","conversation_id":"conv-write"}',
+      `{"event":"step_update","step_update":{"step_index":1,"state":"ERROR","step_type":"tool","tool_name":"${tool}","tool_info":{"name":"${tool}","parameters":{"TargetFile":"/repo/src/main.ts"},"error":{"type":"TOOL_ERROR","message":"User denied permission to write file"}}}}`,
+      '{"event":"result","result":{"status":"SUCCESS","response":""}}',
+      '',
+    ].join('\n'));
+    const outcome = classifyOutcome({ parsed: parser.finish(), exitCode: 0, stderr: '' });
+
+    assert.equal(outcome.status, 'needs_permission', `${tool} must stay grantable`);
+    assert.equal(outcome.permissionRequests[0].suggested_rule, 'write_file(/repo/src/main\\.ts)');
+  }
+});
+
 test('takes the rule from ask_permission when agy requests a grant itself', () => {
   const parser = createStreamParser();
   parser.push([

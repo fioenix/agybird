@@ -187,9 +187,13 @@ export function findProjectForWorkspace(cwd, directory = PROJECTS_DIRECTORY) {
     const path = join(directory, entry);
     const document = readJsonOrNull(path);
     const resources = document?.projectResources?.resources ?? [];
-    const matches = resources.some(
-      (resource) => resource?.gitFolder?.folderUri?.replace(/\/$/, '') === wanted,
-    );
+    // Antigravity records a repository as `gitFolder.folderUri` and a plain
+    // directory as `folderUri`; missing the second shape creates a duplicate
+    // project on every run in a non-git workspace.
+    const matches = resources.some((resource) => {
+      const uri = resource?.gitFolder?.folderUri ?? resource?.folderUri;
+      return typeof uri === 'string' && uri.replace(/\/$/, '') === wanted;
+    });
     if (matches) return { path, document };
   }
   return null;
@@ -453,9 +457,10 @@ const RULE_KIND_BY_TOOL = new Map([
   ['view_file', 'read_file'],
   ['list_dir', 'read_file'],
   ['read_file', 'read_file'],
-  ['write_file', 'write_file'],
-  ['edit_file', 'write_file'],
+  ['write_to_file', 'write_file'],
   ['replace_file_content', 'write_file'],
+  ['multi_replace_file_content', 'write_file'],
+  ['edit_file', 'write_file'],
 ]);
 const TARGET_PARAMETERS = ['CommandLine', 'AbsolutePath', 'DirectoryPath', 'TargetFile', 'FilePath', 'Url'];
 const MAX_PERMISSION_FIELD = 300;
