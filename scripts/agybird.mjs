@@ -619,18 +619,27 @@ const RULE_KIND_BY_TOOL = new Map([
 ]);
 const TARGET_PARAMETERS = ['CommandLine', 'AbsolutePath', 'DirectoryPath', 'TargetFile', 'FilePath', 'Url'];
 const MAX_PERMISSION_FIELD = 300;
+// A rule whose target runs to thousands of characters cannot be reviewed by the
+// person approving it. Past this the denial is still reported, but without a
+// suggestion, so the caller has to settle on a narrower rule deliberately.
+const MAX_SUGGESTED_RULE_TARGET = 2000;
 const GLOBAL_SETTINGS_PATH = join(homedir(), '.gemini', 'antigravity-cli', 'settings.json');
 
+// For display only. Flattening and cutting keep untrusted stream text from being
+// rendered as instructions, and both make the value useless for building a rule.
 function truncateField(value) {
   return value.replace(/\s+/g, ' ').trim().slice(0, MAX_PERMISSION_FIELD);
 }
 
+// The target exactly as agy reported it. A rule is matched against this string,
+// so anything that alters it — cutting, collapsing whitespace — produces a rule
+// that cannot authorize the call it came from.
 function permissionTarget(tool) {
   const parameters = tool.arguments;
   if (!parameters || typeof parameters !== 'object') return null;
   for (const key of TARGET_PARAMETERS) {
     const value = parameters[key];
-    if (typeof value === 'string' && value.trim()) return truncateField(value);
+    if (typeof value === 'string' && value.trim()) return value;
   }
   return null;
 }
@@ -648,14 +657,14 @@ function askedPermission(tool) {
   const parameters = tool.arguments;
   if (!parameters || typeof parameters !== 'object') return null;
   const action = typeof parameters.Action === 'string' ? parameters.Action.trim() : null;
-  const target = typeof parameters.Target === 'string' ? truncateField(parameters.Target) : null;
+  const target = typeof parameters.Target === 'string' && parameters.Target.trim() ? parameters.Target : null;
   if (!action || !target || !RULE_KINDS.has(action)) return null;
-  return { target, rule: `${action}(${escapeRuleTarget(target)})` };
+  return { kind: action, target };
 }
 
-function suggestedRule(toolName, target) {
-  const kind = RULE_KIND_BY_TOOL.get(toolName);
+function suggestedRule(kind, target) {
   if (!kind || !target) return null;
+  if (target.length > MAX_SUGGESTED_RULE_TARGET) return null;
   return `${kind}(${escapeRuleTarget(target)})`;
 }
 
@@ -669,12 +678,19 @@ export function describePermissionRequests(parsed, stderr = '') {
     if (!reason || !PERMISSION_DENIAL.test(reason)) continue;
     const asked = askedPermission(tool);
     const target = asked?.target ?? permissionTarget(tool);
-    const rule = asked?.rule ?? suggestedRule(tool.name, target);
+    const kind = asked?.kind ?? RULE_KIND_BY_TOOL.get(tool.name) ?? null;
+    const display = target === null ? null : truncateField(target);
     requests.push({
       tool: tool.name,
-      target,
-      suggested_rule: rule,
-      grantable: !UNGRANTABLE_DENIAL.test(stderr) && rule !== null,
+      target: display,
+      // The shown target is flattened and cut, so it can differ from what the
+      // rule actually covers. Say so: for something like a pull-request body the
+      // hidden remainder is the content being published.
+      target_truncated: display !== target,
+      suggested_rule: suggestedRule(kind, target),
+      // An allow-rule exists for this action even when the target is too long to
+      // suggest one; the caller then has to choose a narrower rule with the user.
+      grantable: !UNGRANTABLE_DENIAL.test(stderr) && kind !== null && target !== null,
       settings_path: GLOBAL_SETTINGS_PATH,
       reason: truncateField(reason),
     });

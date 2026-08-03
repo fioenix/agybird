@@ -38,12 +38,17 @@ Headless `agy` has no way to prompt a human, so any tool that needs confirmation
 {
   "tool": "run_command",
   "target": "git rev-parse --show-toplevel",
+  "target_truncated": false,
   "suggested_rule": "command(git rev-parse --show-toplevel)",
   "grantable": true,
   "settings_path": "/Users/<you>/.gemini/antigravity-cli/settings.json",
   "reason": "User denied permission to run command: git rev-parse --show-toplevel"
 }
 ```
+
+`target` is shortened and flattened for display; `suggested_rule` carries the target in full, because a rule is matched against the real string. When `target_truncated` is `true` the rule covers text the user has not been shown — for something like a pull-request body, that hidden remainder is the content about to be published, so read it from the diff or the command itself before asking.
+
+`suggested_rule` is `null` when the target is too long to review at all. The denial is still `needs_permission`, but no rule is offered: agree a narrower one with the user, such as a `command(gh pr create)` prefix, rather than approving thousands of characters nobody has read.
 
 `blocked` means no allow-rule applies — either the target could not be determined, or `agy` reported that settings allow-rules do not apply to that tool. Report it and stop.
 

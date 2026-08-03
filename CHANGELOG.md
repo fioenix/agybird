@@ -4,6 +4,7 @@ All notable changes to Agybird are documented in this file.
 
 ## Unreleased
 
+- Build `suggested_rule` from the target exactly as reported, so a rule for a long or multi-line command can actually authorize it; the rendered `target` stays flattened and bounded, and `target_truncated` says when the rule covers more than was shown. No rule is suggested for a target too long to review ([#3](https://github.com/fioenix/agybird/issues/3)).
 - Repair a `once` grant that an interrupted run left on disk: the undo is journalled before the grant is applied, the next run removes anything abandoned and reports it in `warnings[]`, and `SIGINT`/`SIGTERM` now clean up immediately ([#5](https://github.com/fioenix/agybird/issues/5)).
 - Require an allow-rule target to be an escaped literal instead of screening four literal spellings, so `command(.+)` and `read_file(/.*)` are no longer accepted as narrow rules ([#4](https://github.com/fioenix/agybird/issues/4)).
 
