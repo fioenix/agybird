@@ -69,7 +69,7 @@ Word the resume prompt as an explicit grant. Sending only "Continue." makes the 
 
 Expect more than one round. The model often requests a broader rule than the single call that was denied — a denied `git log -1 --format=%H` came back as a request for `command(git)` — and after that is granted it may need a separate `read_file` rule. Each round is a fresh decision for the user; do not pre-approve the next one.
 
-Allow-rule syntax, verified against `agy` 1.1.9. The rule names the underlying action, not the tool: `view_file` and `list_dir` are both authorized by `read_file`.
+Allow-rule syntax, verified against `agy` 1.1.9 and 1.1.10. The rule names the underlying action, not the tool: `view_file` and `list_dir` are both authorized by `read_file`.
 
 | Rule | Authorizes |
 | --- | --- |

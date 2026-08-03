@@ -1,5 +1,11 @@
 # Live Antigravity Verification — macOS — 2026-08-02
 
+> **Snapshot, not current behaviour.** This records what was observed on 2026-08-02,
+> before the permission and session work. It reports a denial as `blocked`; the
+> runner now reports `needs_permission` whenever an allow-rule would authorize the
+> action. The observations are left as written rather than rewritten to match
+> today's code. The automated suite is the current contract.
+
 ## Environment and policy
 
 - Official binary: `agy` resolved from the user's local executable path.
