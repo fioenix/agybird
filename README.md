@@ -76,6 +76,8 @@ One objective stays in one Antigravity conversation. The runner records the work
 
 When headless `agy` denies an action it cannot prompt for, `needs_permission` carries a `permission_requests[]` entry naming the tool, the exact target, and the allow-rule that would authorize it, so the caller can ask the user instead of guessing at configuration. After the user approves, `--grant <rule>` applies it to the session being resumed; `--grant-scope once` (the default) removes it again when the run ends, and a rule left behind by an interrupted run is removed by the next one.
 
+Because Antigravity applies a granted rule to every conversation in that project, a run on a *different* conversation in the same workspace returns `error` while a grant is live, rather than quietly inheriting it. Retry once the other run finishes.
+
 ## Safety defaults
 
 - Read-only unless the user requests a file-changing outcome.
@@ -98,7 +100,7 @@ Tests use a fake provider process and require no Google credentials. Live tests 
 
 The optional live wrapper refuses to spend credits unless `AGYBIRD_LIVE_CONFIRM=1` is set for that invocation. It still preserves the current Antigravity model, sandbox, permissions, and `useG1Credits` setting.
 
-Evidence: [deterministic verification](docs/verification/2026-08-02-simulated.md) and [live macOS verification with `agy` 1.1.9](docs/verification/2026-08-02-live-macos.md).
+The automated suite is the current contract. Two earlier reports are kept as dated snapshots: [deterministic verification](docs/verification/2026-08-02-simulated.md) and [live macOS verification with `agy` 1.1.9](docs/verification/2026-08-02-live-macos.md). Both predate the permission and session work, so they record a denial as `blocked` where the runner now reports `needs_permission`. They are history, not a description of current behaviour.
 
 ## License
 

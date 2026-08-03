@@ -1,5 +1,9 @@
 # Simulated Verification — 2026-08-02
 
+> **Snapshot, not current behaviour.** This records the deterministic checks as they
+> stood on 2026-08-02, before the permission and session work. Counts and status
+> names have moved on; the automated suite is the current contract.
+
 This report covers deterministic checks that do not use Google credentials or Antigravity subscription credits.
 
 ## Environment
