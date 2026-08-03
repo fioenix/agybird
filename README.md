@@ -1,5 +1,8 @@
 # Agybird
 
+[![release](https://img.shields.io/github/v/release/fioenix/agybird)](https://github.com/fioenix/agybird/releases/latest)
+[![CI](https://github.com/fioenix/agybird/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/fioenix/agybird/actions/workflows/ci.yml)
+
 Agybird is an MIT-licensed Agent Skill that lets Claude Code and Codex delegate work to the official Google Antigravity CLI (`agy`). It uses the user's existing Antigravity authentication and Gemini subscription instead of extracting credentials or calling private APIs.
 
 Agybird is unofficial and is not affiliated with Google.
