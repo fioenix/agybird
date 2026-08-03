@@ -69,7 +69,9 @@ Ask agy to summarize docs/ as JSON with summary and risks. Do not write files.
 
 The skill chooses a category and invokes `scripts/agybird.mjs` with the prompt on stdin. The runner emits one JSON envelope whose status is `success`, `partial`, `needs_permission`, `blocked`, or `error`.
 
-When headless `agy` denies an action it cannot prompt for, `needs_permission` carries a `permission_requests[]` entry naming the tool, the exact target, and the allow-rule that would authorize it, so the caller can ask the user instead of guessing at configuration. After the user approves, `--conversation <id> --grant <rule>` resumes the same session with that rule in force; `--grant-scope once` (the default) removes it again when the run ends.
+One objective stays in one Antigravity conversation. The runner records the workspace's conversation and resumes it on the next invocation, so a follow-up continues where the last one stopped instead of paying to rediscover it; `evidence.session_resumed` reports whether that happened, and `--new-session` starts a new objective deliberately.
+
+When headless `agy` denies an action it cannot prompt for, `needs_permission` carries a `permission_requests[]` entry naming the tool, the exact target, and the allow-rule that would authorize it, so the caller can ask the user instead of guessing at configuration. After the user approves, `--grant <rule>` applies it to the session being resumed; `--grant-scope once` (the default) removes it again when the run ends, and a rule left behind by an interrupted run is removed by the next one.
 
 ## Safety defaults
 

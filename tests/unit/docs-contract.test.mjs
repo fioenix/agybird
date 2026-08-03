@@ -28,7 +28,7 @@ test('README describes three categories and the provider boundary', () => {
 test('security policy uses private GitHub advisories and has supported versions', () => {
   const security = read('SECURITY.md');
   assert.match(security, /private security advisory/i);
-  assert.match(security, /0\.1\.x/);
+  assert.match(security, /0\.2\.x/);
   assert.doesNotMatch(security, /security@example|YOUR_EMAIL/i);
 });
 
