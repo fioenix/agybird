@@ -9,6 +9,7 @@ import {
   applyGrants,
   ensureProject,
   findProjectForWorkspace,
+  literalRuleTarget,
   parseArgs,
   parseGrantRule,
   revertGrants,
@@ -25,11 +26,54 @@ test('accepts the allow-rule kinds agy 1.1.9 recognizes', () => {
   assert.deepEqual(parseGrantRule('mcp(obsidian/obsidian_get_note)'), { kind: 'mcp', target: 'obsidian/obsidian_get_note' });
 });
 
-test('rejects malformed, unknown, and overly broad allow-rules', () => {
+test('rejects malformed and unknown allow-rules', () => {
   assert.throws(() => parseGrantRule('git rev-parse'), /Invalid allow-rule/);
   assert.throws(() => parseGrantRule('shell(rm -rf)'), /Unsupported allow-rule kind/);
-  assert.throws(() => parseGrantRule('command(*)'), /too broad/);
-  assert.throws(() => parseGrantRule('read_file(/)'), /too broad/);
+});
+
+test('rejects every spelling of a wildcard target, not just the obvious ones', () => {
+  for (const rule of [
+    'command(*)',
+    'command(.*)',
+    'command(.+)',
+    'command(.{0,})',
+    'command([\\s\\S]*)',
+    'command((?:))',
+    'command(a|.*)',
+    'read_file(/.*)',
+    'read_file(.+)',
+    'write_file(^.*$)',
+  ]) {
+    assert.throws(() => parseGrantRule(rule), /literal, not a pattern|too broad/, rule);
+  }
+});
+
+test('rejects targets that name no particular resource', () => {
+  for (const rule of ['read_file(/)', 'read_file(~)', 'read_file(~/)', 'command( )', 'command(-)']) {
+    assert.throws(() => parseGrantRule(rule), /too broad/, rule);
+  }
+});
+
+test('rejects a target ending in a dangling escape', () => {
+  assert.throws(() => parseGrantRule('command(git\\)'), /literal, not a pattern/);
+});
+
+test('accepts the escaped literals the runner itself suggests', () => {
+  assert.deepEqual(
+    parseGrantRule('command(git log main\\.\\.session-continuity)'),
+    { kind: 'command', target: 'git log main\\.\\.session-continuity' },
+  );
+  assert.deepEqual(
+    parseGrantRule('write_file(/repo/src/main\\.ts)'),
+    { kind: 'write_file', target: '/repo/src/main\\.ts' },
+  );
+});
+
+test('reads the literal a target denotes so escapes are not counted as content', () => {
+  assert.equal(literalRuleTarget('git log main\\.\\.x'), 'git log main..x');
+  assert.equal(literalRuleTarget('/repo/main\\.ts'), '/repo/main.ts');
+  assert.equal(literalRuleTarget('.+'), null);
+  assert.equal(literalRuleTarget('git\\'), null);
 });
 
 test('accepts a grant against the session being resumed', () => {
