@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmodSync, copyFileSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -26,6 +26,8 @@ function runRunner({
   references = [],
   cwd = mkdtempSync(join(tmpdir(), 'agybird-runner-')),
   extraArgs = [],
+  projectsDir = fakeProjects,
+  stateDir = fakeState,
 } = {}) {
   const args = [runnerPath, '--category', category, '--cwd', cwd, '--mode', mode, '--timeout', timeout];
   for (const reference of references) args.push('--reference', reference);
@@ -37,8 +39,8 @@ function runRunner({
       env: {
         ...process.env,
         PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ''}`,
-        AGYBIRD_PROJECTS_DIR: fakeProjects,
-        AGYBIRD_STATE_DIR: fakeState,
+        AGYBIRD_PROJECTS_DIR: projectsDir,
+        AGYBIRD_STATE_DIR: stateDir,
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -174,6 +176,65 @@ test('refuses a grant when no session was ever recorded for the workspace', asyn
   assert.equal(result.exitCode, 1);
   assert.equal(envelope.status, 'error');
   assert.match(envelope.warnings.join('\n'), /needs a session to resume/);
+});
+
+test('removes a once-grant that a killed run left behind, on the next run', async () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'agybird-killed-'));
+  const projects = mkdtempSync(join(tmpdir(), 'agybird-killed-projects-'));
+  const state = mkdtempSync(join(tmpdir(), 'agybird-killed-state-'));
+  const childEnv = {
+    ...process.env,
+    PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ''}`,
+    AGYBIRD_PROJECTS_DIR: projects,
+    AGYBIRD_STATE_DIR: state,
+  };
+  const baseArgs = [runnerPath, '--category', 'general', '--cwd', cwd, '--mode', 'read'];
+
+  // A recorded session, because a grant only applies to a run being resumed.
+  await new Promise((resolve, reject) => {
+    const first = spawn(process.execPath, [...baseArgs, '--timeout', '5s'], { cwd: projectRoot, env: childEnv, stdio: ['pipe', 'ignore', 'ignore'] });
+    first.on('error', reject);
+    first.on('close', resolve);
+    first.stdin.end('CASE_SUCCESS');
+  });
+
+  const projectPath = join(projects, readdirSync(projects)[0]);
+  const grantArgs = [...baseArgs, '--timeout', '30s', '--grant', 'command(git status)', '--grant-scope', 'once'];
+  const killed = spawn(process.execPath, grantArgs, { cwd: projectRoot, env: childEnv, stdio: ['pipe', 'ignore', 'ignore'] });
+  killed.stdin.end('CASE_DELAY');
+
+  // Wait until the grant is actually on disk, then kill without warning.
+  await new Promise((resolve, reject) => {
+    const deadline = Date.now() + 10_000;
+    const poll = setInterval(() => {
+      if (/git status/.test(readFileSync(projectPath, 'utf8'))) {
+        clearInterval(poll);
+        resolve();
+      } else if (Date.now() > deadline) {
+        clearInterval(poll);
+        reject(new Error('the grant was never written'));
+      }
+    }, 25);
+  });
+  const exited = new Promise((resolve) => killed.on('close', resolve));
+  killed.kill('SIGKILL');
+  await exited;
+
+  assert.match(
+    readFileSync(projectPath, 'utf8'),
+    /git status/,
+    'SIGKILL cannot run cleanup, so the rule is still on disk',
+  );
+
+  const recovery = await runRunner({ cwd, prompt: 'CASE_SUCCESS', projectsDir: projects, stateDir: state });
+  const envelope = parseSingleEnvelope(recovery.stdout);
+
+  assert.doesNotMatch(
+    readFileSync(projectPath, 'utf8'),
+    /git status/,
+    'the next run removes the abandoned rule',
+  );
+  assert.match(envelope.warnings.join('\n'), /one-time allow-rule/i, 'and says so');
 });
 
 test('validates an absolute reference image before process execution', async () => {

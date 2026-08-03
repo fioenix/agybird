@@ -13,6 +13,7 @@ import {
   readSync,
   realpathSync,
   renameSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -294,12 +295,76 @@ export function writeSession(cwd, conversationId, directory = STATE_DIRECTORY) {
   }
   const merged = sessions ?? {};
   merged[sessionKey(cwd)] = conversationId;
-  // Written through a temporary file so an interrupted run cannot leave a
-  // half-written store behind, which is what makes it unreadable in the first place.
-  const temporary = `${path}.${process.pid}.tmp`;
-  writeFileSync(temporary, JSON.stringify(merged, null, 1));
-  renameSync(temporary, path);
+  writeJsonAtomically(path, merged);
   return path;
+}
+
+// Through a temporary file and a rename, so an interrupted write can never leave
+// a half-written file behind — which is what makes one unreadable in the first place.
+function writeJsonAtomically(path, value) {
+  const temporary = `${path}.${process.pid}.tmp`;
+  writeFileSync(temporary, JSON.stringify(value, null, 1));
+  renameSync(temporary, path);
+}
+
+const PENDING_GRANT_PREFIX = 'pending-grant-';
+
+function processIsRunning(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // The process exists but belongs to someone else; either way it is not gone.
+    return error?.code === 'EPERM';
+  }
+}
+
+// A `once` grant is reverted in a `finally` block, and `finally` does not run
+// when the process is killed. Record how to undo the grant before making it, so
+// a run that never gets to clean up leaves instructions behind for the next one.
+export function journalGrant(state, directory) {
+  mkdirSync(directory, { recursive: true });
+  const path = join(directory, `${PENDING_GRANT_PREFIX}${process.pid}.json`);
+  writeJsonAtomically(path, state);
+  return path;
+}
+
+export function clearGrantJournal(path) {
+  if (path) rmSync(path, { force: true });
+}
+
+// Undo every grant whose run is gone. A journal belonging to a live process is
+// left alone: that run is still using its grant and will clean up after itself.
+export function recoverAbandonedGrants(directory = STATE_DIRECTORY, isRunning = processIsRunning) {
+  let entries;
+  try {
+    entries = readdirSync(directory);
+  } catch {
+    return [];
+  }
+
+  const warnings = [];
+  for (const entry of entries) {
+    if (!entry.startsWith(PENDING_GRANT_PREFIX) || !entry.endsWith('.json')) continue;
+    const pid = Number.parseInt(entry.slice(PENDING_GRANT_PREFIX.length), 10);
+    if (Number.isInteger(pid) && isRunning(pid)) continue;
+
+    const path = join(directory, entry);
+    const record = readJsonOrNull(path);
+    if (typeof record?.path === 'string' && typeof record?.previous === 'string') {
+      try {
+        revertGrants(record);
+        warnings.push(
+          `Removed a one-time allow-rule that an interrupted run left in ${basename(record.path)}`,
+        );
+      } catch (error) {
+        warnings.push(`Could not remove a one-time allow-rule left in ${basename(record.path)}: ${error.message}`);
+        continue;
+      }
+    }
+    rmSync(path, { force: true });
+  }
+  return warnings;
 }
 
 // Explicit beats implicit: a caller naming a conversation, or asking for a new
@@ -920,6 +985,19 @@ function fatalEnvelope(category, error) {
 export async function main(argv = process.argv.slice(2), env = process.env) {
   let options;
   let grantState = null;
+  let journalPath = null;
+  let onSignal = null;
+
+  const releaseGrant = () => {
+    // A one-time grant must leave no trace, including when the run failed.
+    if (grantState && options?.grantScope === 'once') {
+      revertGrants(grantState);
+      grantState = null;
+    }
+    clearGrantJournal(journalPath);
+    journalPath = null;
+  };
+
   try {
     options = validateRequest(parseArgs(argv));
     const userPrompt = await readPrompt();
@@ -928,6 +1006,10 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
     options.project = project.id;
 
     const stateDirectory = env.AGYBIRD_STATE_DIR || STATE_DIRECTORY;
+    // Before anything else, undo any one-time grant an earlier run was killed
+    // before it could remove. The user is told, rather than it being fixed invisibly.
+    const recovered = recoverAbandonedGrants(stateDirectory);
+
     const resumed = resolveSession(options, stateDirectory);
     if (resumed !== null) {
       options.conversation = resumed;
@@ -936,7 +1018,19 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
       throw new Error('--grant needs a session to resume, and none was recorded for this workspace');
     }
     if (options.grants.length > 0) {
+      // Intent first: the journal has to exist before the grant does, or a kill
+      // in between leaves a rule on disk that nothing knows how to undo.
+      if (options.grantScope === 'once') {
+        journalPath = journalGrant({ path: project.path, previous: readFileSync(project.path, 'utf8') }, stateDirectory);
+      }
       grantState = applyGrants(project.path, options.grants);
+      // Catchable signals still get an immediate cleanup; the journal covers the rest.
+      onSignal = (signal) => {
+        releaseGrant();
+        process.kill(process.pid, signal);
+      };
+      process.once('SIGINT', onSignal);
+      process.once('SIGTERM', onSignal);
     }
     const execution = await runAgy(options, delegatedPrompt, env);
     const parser = createStreamParser();
@@ -966,7 +1060,7 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
     const envelope = makeEnvelope({
       category: options.category,
       parsed,
-      outcome,
+      outcome: recovered.length > 0 ? { ...outcome, warnings: [...recovered, ...outcome.warnings] } : outcome,
       exitCode: execution.exitCode,
       artifacts,
       agyBinary: execution.binaryPath,
@@ -983,9 +1077,10 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
     process.stderr.write(`agybird: ${error.message}\n`);
     process.exitCode = 1;
   } finally {
-    // A one-time grant must leave no trace, including when the run failed.
-    if (grantState && options?.grantScope === 'once') {
-      revertGrants(grantState);
+    releaseGrant();
+    if (onSignal) {
+      process.removeListener('SIGINT', onSignal);
+      process.removeListener('SIGTERM', onSignal);
     }
   }
 }
