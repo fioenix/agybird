@@ -88,11 +88,10 @@ session is not.
 The in-process `ask_user` hook remains the one thing the CLI cannot match. Permission
 resolution therefore keeps costing a process restart and a disk-scoped grant.
 
-## Still open
+## Follow-up
 
-Three review findings from PR #1 remain, all real and all narrower than the above.
-Staying on the CLI keeps all three:
-
-- The overly-broad-target blacklist (`*`, `/`, `~`, `.*`) does not catch `.+` or `/.*`.
-- `finally` does not run under `SIGKILL`, so a `once` grant can persist on disk.
-- While a `once` grant is live, a concurrent process in the same repo inherits it.
+The three review findings that prompted this evaluation were all fixed on the CLI
+runner rather than by changing backend: the allow-rule guard now requires a
+literal target, an interrupted `once` grant is repaired by the next run, and a
+grant is held under a per-workspace lock so another conversation cannot inherit
+it.

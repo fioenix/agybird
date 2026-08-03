@@ -5,10 +5,13 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import {
+  acquireGrantLock,
   applyGrants,
   clearGrantJournal,
   journalGrant,
+  liveGrantLock,
   recoverAbandonedGrants,
+  releaseGrantLock,
 } from '../../scripts/agybird.mjs';
 
 function temporaryDirectory() {
@@ -94,6 +97,59 @@ test('survives a missing state directory, an unrelated file, and a corrupt journ
     assert.deepEqual(readdirSync(state), ['sessions.json'], 'unrelated state is untouched');
   } finally {
     rmSync(state, { recursive: true, force: true });
+  }
+});
+
+test('lets only one run hold a grant in a workspace at a time', () => {
+  const state = temporaryDirectory();
+  const workspace = temporaryDirectory();
+  try {
+    const held = acquireGrantLock(workspace, 'conv-1', state, alive);
+    assert.ok(held, 'the first run takes the lock');
+
+    assert.equal(
+      acquireGrantLock(workspace, 'conv-2', state, alive),
+      null,
+      'a second run cannot apply a grant while the first holds one',
+    );
+    assert.deepEqual(liveGrantLock(workspace, state, alive), { pid: process.pid, conversation: 'conv-1' });
+
+    releaseGrantLock(held);
+    assert.equal(liveGrantLock(workspace, state, alive), null);
+    assert.ok(acquireGrantLock(workspace, 'conv-2', state, alive), 'the lock is available again');
+  } finally {
+    rmSync(state, { recursive: true, force: true });
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('does not let a lock from a dead run block the workspace forever', () => {
+  const state = temporaryDirectory();
+  const workspace = temporaryDirectory();
+  try {
+    acquireGrantLock(workspace, 'conv-1', state, alive);
+
+    assert.equal(liveGrantLock(workspace, state, dead), null, 'a lock whose process is gone is not live');
+    assert.ok(acquireGrantLock(workspace, 'conv-2', state, dead), 'and it does not prevent the next run');
+  } finally {
+    rmSync(state, { recursive: true, force: true });
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('scopes the grant lock to one workspace', () => {
+  const state = temporaryDirectory();
+  const workspace = temporaryDirectory();
+  const other = temporaryDirectory();
+  try {
+    acquireGrantLock(workspace, 'conv-1', state, alive);
+
+    assert.equal(liveGrantLock(other, state, alive), null, 'an unrelated workspace is unaffected');
+    assert.ok(acquireGrantLock(other, 'conv-2', state, alive));
+  } finally {
+    rmSync(state, { recursive: true, force: true });
+    rmSync(workspace, { recursive: true, force: true });
+    rmSync(other, { recursive: true, force: true });
   }
 });
 
