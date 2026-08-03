@@ -11,6 +11,8 @@ const projectRoot = join(testDirectory, '..', '..');
 const runnerPath = join(projectRoot, 'scripts', 'agybird.mjs');
 const fakeAgyPath = join(projectRoot, 'tests', 'fixtures', 'fake-agy.mjs');
 const fakeBin = mkdtempSync(join(tmpdir(), 'agybird-fake-bin-'));
+// Keep the runner's workspace-project bookkeeping out of the real Antigravity config.
+const fakeProjects = mkdtempSync(join(tmpdir(), 'agybird-fake-projects-'));
 const fakeCommandPath = join(fakeBin, 'agy');
 copyFileSync(fakeAgyPath, fakeCommandPath);
 chmodSync(fakeCommandPath, 0o755);
@@ -26,6 +28,7 @@ function runRunner({ category = 'general', mode = 'read', prompt = 'CASE_SUCCESS
       env: {
         ...process.env,
         PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ''}`,
+        AGYBIRD_PROJECTS_DIR: fakeProjects,
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });

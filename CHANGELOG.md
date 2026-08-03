@@ -2,6 +2,15 @@
 
 All notable changes to Agybird are documented in this file.
 
+## Unreleased
+
+- Report denied actions as `needs_permission` with a `permission_requests[]` entry naming the tool, target, and allow-rule, instead of an unexplained `blocked`.
+- Keep `blocked` for denials no allow-rule can authorize.
+- Document the verified Antigravity allow-rule syntax and the two locations rules are read from.
+- Add `--grant` and `--grant-scope` to resume a blocked session with a user-approved allow-rule, written as a repository-scoped Antigravity project grant. `once` reverts the rule when the run ends; `remember` keeps it.
+- Resolve an Antigravity project for the workspace on every run so a later grant reaches the resumed conversation.
+- Take the requested rule from the `ask_permission` tool payload when agy asks for a grant itself.
+
 ## 0.1.1 - 2026-08-02
 
 - Add a Claude Code plugin manifest and a single-plugin marketplace so Agybird can be installed with `/plugin install agybird@agybird`.

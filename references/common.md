@@ -23,9 +23,9 @@ Summarize the local documentation and cite concrete evidence.
 AGYBIRD_PROMPT_7F3A
 ```
 
-Optional runner flags are `--reference`, `--json-schema`, `--conversation`, `--model`, `--effort`, `--agent`, `--sandbox`, and `--timeout`. Supply `--model`, `--effort`, `--agent`, or `--sandbox` only when the user explicitly requests the corresponding override. Do not change or modify `useG1Credits`; if quota blocks the task, ask the user before changing any credit policy.
+Optional runner flags are `--reference`, `--json-schema`, `--conversation`, `--grant`, `--grant-scope`, `--model`, `--effort`, `--agent`, `--sandbox`, and `--timeout`. Pass `--grant` only with a rule the user has explicitly approved; see [troubleshooting.md](troubleshooting.md). Supply `--model`, `--effort`, `--agent`, or `--sandbox` only when the user explicitly requests the corresponding override. Do not change or modify `useG1Credits`; if quota blocks the task, ask the user before changing any credit policy.
 
-The runner maps Agybird `read` to Antigravity's official `plan` execution mode and `write` to `accept-edits`. These modes express intent but do not override tool permission rules; a headless action that still needs confirmation remains `blocked`.
+The runner maps Agybird `read` to Antigravity's official `plan` execution mode and `write` to `accept-edits`. These modes express intent but do not override tool permission rules; a headless action that still needs confirmation is auto-denied.
 
 Never pass `--dangerously-skip-permissions`. The runner itself never constructs a shell command.
 
@@ -35,9 +35,10 @@ The runner prints one JSON envelope to stdout:
 
 - `success`: the Antigravity result and required verification passed.
 - `partial`: Antigravity returned a terminal result, but at least one tool action failed.
-- `blocked`: the current Antigravity permission policy denied an action.
+- `needs_permission`: an action was denied and an allow-rule would authorize it. Every denied action is described in `permission_requests[]`. Ask the user to decide; see [troubleshooting.md](troubleshooting.md).
+- `blocked`: an action was denied and no allow-rule applies.
 - `error`: process, stream, timeout, or artifact validation failed.
 
-Use `conversation_id` with `--conversation` only when continuity is necessary. Keep stderr as diagnostics; never parse it as the primary result.
+Use `conversation_id` with `--conversation` only when continuity is necessary, including after the user grants a permission. Keep stderr as diagnostics; never parse it as the primary result.
 
 Official references: [overview](https://antigravity.google/docs/cli/overview), [headless mode](https://antigravity.google/docs/cli/headless), and [best practices](https://antigravity.google/docs/cli/best-practices).

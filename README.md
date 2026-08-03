@@ -67,7 +67,9 @@ Use my Gemini subscription through Antigravity CLI to generate a minimal blue-bi
 Ask agy to summarize docs/ as JSON with summary and risks. Do not write files.
 ```
 
-The skill chooses a category and invokes `scripts/agybird.mjs` with the prompt on stdin. The runner emits one JSON envelope whose status is `success`, `partial`, `blocked`, or `error`.
+The skill chooses a category and invokes `scripts/agybird.mjs` with the prompt on stdin. The runner emits one JSON envelope whose status is `success`, `partial`, `needs_permission`, `blocked`, or `error`.
+
+When headless `agy` denies an action it cannot prompt for, `needs_permission` carries a `permission_requests[]` entry naming the tool, the exact target, and the allow-rule that would authorize it, so the caller can ask the user instead of guessing at configuration. After the user approves, `--conversation <id> --grant <rule>` resumes the same session with that rule in force; `--grant-scope once` (the default) removes it again when the run ends.
 
 ## Safety defaults
 
