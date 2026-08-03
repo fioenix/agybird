@@ -12,6 +12,7 @@ import {
   readFileSync,
   readSync,
   realpathSync,
+  renameSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -233,18 +234,41 @@ const STATE_DIRECTORY = join(homedir(), '.agybird');
 // convention the calling agent can silently drop, and a dropped id restarts the
 // work from nothing, so the runner remembers the conversation per workspace and
 // resumes it unless a new session is asked for explicitly.
+// Keyed on the canonical path, not the spelling the caller happened to use: a
+// symlinked workspace and a Windows drive letter in the other case both name the
+// same directory, and treating them as different keys silently loses the session.
+// Project matching keeps using the raw URI, because that is what Antigravity
+// itself recorded.
+function sessionKey(cwd) {
+  try {
+    return workspaceUri((realpathSync.native ?? realpathSync)(cwd));
+  } catch {
+    return workspaceUri(cwd);
+  }
+}
+
 export function readSession(cwd, directory = STATE_DIRECTORY) {
   const sessions = readJsonOrNull(join(directory, 'sessions.json'));
-  const recorded = sessions?.[workspaceUri(cwd)];
+  const recorded = sessions?.[sessionKey(cwd)];
   return typeof recorded === 'string' && recorded !== '' ? recorded : null;
 }
 
 export function writeSession(cwd, conversationId, directory = STATE_DIRECTORY) {
   mkdirSync(directory, { recursive: true });
   const path = join(directory, 'sessions.json');
-  const sessions = readJsonOrNull(path) ?? {};
-  sessions[workspaceUri(cwd)] = conversationId;
-  writeFileSync(path, JSON.stringify(sessions, null, 1));
+  const sessions = readJsonOrNull(path);
+  // An unreadable store cannot be merged into, and overwriting it would drop
+  // every other workspace without a trace. Keep it for inspection instead.
+  if (sessions === null && statOrNull(path)) {
+    writeFileSync(`${path}.corrupt`, readFileSync(path));
+  }
+  const merged = sessions ?? {};
+  merged[sessionKey(cwd)] = conversationId;
+  // Written through a temporary file so an interrupted run cannot leave a
+  // half-written store behind, which is what makes it unreadable in the first place.
+  const temporary = `${path}.${process.pid}.tmp`;
+  writeFileSync(temporary, JSON.stringify(merged, null, 1));
+  renameSync(temporary, path);
   return path;
 }
 

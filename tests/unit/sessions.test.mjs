@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -17,6 +17,12 @@ function temporaryDirectory() {
   return mkdtempSync(join(tmpdir(), 'agybird-sessions-'));
 }
 
+// The store keys on the canonical path, so the expectation has to resolve the
+// same way; on macOS a temporary directory is reached through a symlink.
+function key(cwd) {
+  return pathToFileURL(realpathSync(cwd)).href.replace(/\/$/, '');
+}
+
 test('records a conversation per workspace and reads it back', () => {
   const directory = temporaryDirectory();
   const workspace = temporaryDirectory();
@@ -31,8 +37,8 @@ test('records a conversation per workspace and reads it back', () => {
     writeSession(other, 'conv-2', directory);
     writeSession(workspace, 'conv-3', directory);
     const stored = JSON.parse(readFileSync(join(directory, 'sessions.json'), 'utf8'));
-    assert.equal(stored[pathToFileURL(workspace).href.replace(/\/$/, '')], 'conv-3', 'the newest id replaces the old one');
-    assert.equal(stored[pathToFileURL(other).href.replace(/\/$/, '')], 'conv-2', 'unrelated workspaces survive the write');
+    assert.equal(stored[key(workspace)], 'conv-3', 'the newest id replaces the old one');
+    assert.equal(stored[key(other)], 'conv-2', 'unrelated workspaces survive the write');
   } finally {
     rmSync(directory, { recursive: true, force: true });
     rmSync(workspace, { recursive: true, force: true });
@@ -102,6 +108,57 @@ test('tolerates a corrupt session store instead of failing the run', () => {
     writeSession(workspace, 'conv-1', directory);
     writeFileSync(join(directory, 'sessions.json'), '{not json');
     assert.equal(readSession(workspace, directory), null);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('keeps a corrupt store aside rather than silently discarding it', () => {
+  const directory = temporaryDirectory();
+  const workspace = temporaryDirectory();
+  try {
+    writeSession(workspace, 'conv-1', directory);
+    writeFileSync(join(directory, 'sessions.json'), '{not json');
+    writeSession(workspace, 'conv-2', directory);
+
+    assert.equal(readSession(workspace, directory), 'conv-2', 'the run still records its own session');
+    assert.equal(
+      readFileSync(join(directory, 'sessions.json.corrupt'), 'utf8'),
+      '{not json',
+      'the unreadable store is preserved for inspection',
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('treats a symlinked workspace as the same session as its real path', () => {
+  const directory = temporaryDirectory();
+  const real = temporaryDirectory();
+  const link = join(temporaryDirectory(), 'alias');
+  try {
+    symlinkSync(real, link);
+    writeSession(real, 'conv-1', directory);
+    assert.equal(readSession(link, directory), 'conv-1', 'the spelling of the path must not lose the session');
+
+    writeSession(link, 'conv-2', directory);
+    const stored = JSON.parse(readFileSync(join(directory, 'sessions.json'), 'utf8'));
+    assert.equal(Object.keys(stored).length, 1, 'one directory holds one entry, not one per spelling');
+    assert.equal(readSession(real, directory), 'conv-2');
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+    rmSync(real, { recursive: true, force: true });
+  }
+});
+
+test('leaves no temporary file behind after recording a session', () => {
+  const directory = temporaryDirectory();
+  const workspace = temporaryDirectory();
+  try {
+    writeSession(workspace, 'conv-1', directory);
+    assert.deepEqual(readdirSync(directory), ['sessions.json']);
   } finally {
     rmSync(directory, { recursive: true, force: true });
     rmSync(workspace, { recursive: true, force: true });

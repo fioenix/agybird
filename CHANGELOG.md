@@ -12,6 +12,8 @@ All notable changes to Agybird are documented in this file.
 - Take the requested rule from the `ask_permission` tool payload when agy asks for a grant itself.
 - Keep one objective in one Antigravity conversation: the runner records the workspace's conversation and resumes it automatically, reporting the outcome as `evidence.session_resumed`.
 - Add `--new-session` to start a fresh conversation deliberately. `--grant` no longer needs a hand-threaded `--conversation`, and is refused when there is no session to unblock.
+- Key the session store on the canonical workspace path, so a symlinked directory or a differently-cased Windows drive letter no longer loses the conversation.
+- Write the session store through a temporary file and rename, and preserve an unreadable store as `sessions.json.corrupt` rather than overwriting every other workspace.
 - Record why the Antigravity Python SDK was not adopted as a runner backend in `docs/sdk-evaluation.md`.
 
 ## 0.1.1 - 2026-08-02
