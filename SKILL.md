@@ -17,6 +17,7 @@ Use the official Antigravity CLI as a delegated worker while keeping its authent
    - Read [references/general.md](references/general.md) for analysis, research over local context, structured output, or non-code deliverables.
 3. Read [references/security.md](references/security.md) before any write-mode or sensitive-repository task.
 4. Read [references/troubleshooting.md](references/troubleshooting.md) only when `agy` is missing, authentication fails, permissions block work, quota is exhausted, or output cannot be parsed.
+5. Read [references/docs.md](references/docs.md) when deep or specialized official Antigravity documentation is needed.
 
 ## Core workflow
 

@@ -24,7 +24,7 @@ test('routes all three categories through progressive-disclosure references', ()
     assert.match(skill, new RegExp(`references/${category}\\.md`));
     assert.ok(read(`references/${category}.md`).length > 100);
   }
-  for (const reference of ['common', 'security', 'troubleshooting']) {
+  for (const reference of ['common', 'security', 'troubleshooting', 'docs']) {
     assert.match(skill, new RegExp(`references/${reference}\\.md`));
     assert.ok(read(`references/${reference}.md`).length > 100);
   }
