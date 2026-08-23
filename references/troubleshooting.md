@@ -69,7 +69,7 @@ Word the resume prompt as an explicit grant. Sending only "Continue." makes the 
 
 Expect more than one round. The model often requests a broader rule than the single call that was denied — a denied `git log -1 --format=%H` came back as a request for `command(git)` — and after that is granted it may need a separate `read_file` rule. Each round is a fresh decision for the user; do not pre-approve the next one.
 
-Allow-rule syntax, verified against `agy` 1.1.9 and 1.1.10. The rule names the underlying action, not the tool: `view_file` and `list_dir` are both authorized by `read_file`.
+Allow-rule syntax, verified against `agy` 1.1.9 through 1.1.19. The rule names the underlying action, not the tool: `view_file` and `list_dir` are both authorized by `read_file`.
 
 | Rule | Authorizes |
 | --- | --- |
@@ -93,7 +93,7 @@ The runner also keeps the workspace's conversation id under `~/.agybird/sessions
 
 While a grant is applied the runner holds a lock for that workspace, because a grant is visible to every conversation under the same Antigravity project. A run that would use a different conversation is refused until the grant is released, and reports which of the two it was. A run resuming the same conversation proceeds, since the grant was approved for it.
 
-Nothing inside the repository can grant a permission on `agy` 1.1.9 headless. Writing `<repo>/.gemini/antigravity-cli/settings.json` has no effect; that path does not exist in the CLI. Antigravity's workspace customization root `.agents/` carries rules, skills, plugins, and hooks rather than allow-rules, and a `PreToolUse` hook returning `{"decision": "allow"}` would grant permission in principle — but under `agy -p`, workspace customizations were not loaded at all in testing. A `.agents/hooks.json` was ignored in favour of `~/.gemini/config/hooks.json`, and neither `AGENTS.md` nor `.agents/rules/*.md` reached the model, which answered `NONE` when asked to list the rules it had loaded. Adding the workspace to `trustedWorkspaces` changed nothing, so this is not a trust gate. Do not rely on repository-local configuration in headless mode.
+Nothing inside the repository can grant a permission on `agy` headless. Writing `<repo>/.gemini/antigravity-cli/settings.json` has no effect; that path does not exist in the CLI. Antigravity's workspace customization root `.agents/` carries rules, skills, plugins, and hooks rather than allow-rules, and a `PreToolUse` hook returning `{"decision": "allow"}` would grant permission in principle — but under `agy -p`, workspace customizations were not loaded at all in testing. A `.agents/hooks.json` was ignored in favour of `~/.gemini/config/hooks.json`, and neither `AGENTS.md` nor `.agents/rules/*.md` reached the model, which answered `NONE` when asked to list the rules it had loaded. Adding the workspace to `trustedWorkspaces` changed nothing, so this is not a trust gate. Do not rely on repository-local configuration in headless mode.
 
 Prefer the narrowest target that unblocks the task. `read_file` on a repository root also exposes any secrets inside it.
 
