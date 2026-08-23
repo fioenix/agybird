@@ -294,7 +294,9 @@ test('creates the stable public envelope without raw stream events', () => {
     'category',
     'conversation_id',
     'response',
+    'structured_output',
     'tool_calls',
+    'subagents',
     'permission_requests',
     'artifacts',
     'warnings',
@@ -307,4 +309,29 @@ test('creates the stable public envelope without raw stream events', () => {
   assert.equal(envelope.evidence.agy_exit_code, 0);
   assert.equal(envelope.evidence.agy_status, 'success');
   assert.equal('events' in envelope, false);
+});
+
+test('parses subagents and detailed usage metrics including thinking and cache tokens', () => {
+  const parsed = parseFixture('subagent.ndjson');
+  const outcome = classifyOutcome({ parsed, exitCode: 0, stderr: '' });
+  const envelope = makeEnvelope({ category: 'general', parsed, outcome, exitCode: 0 });
+
+  assert.equal(envelope.status, 'success');
+  assert.equal(envelope.subagents.length, 1);
+  assert.deepEqual(envelope.subagents[0], {
+    type_name: 'research',
+    role: 'Codebase Researcher',
+    conversation_id: 'sub-conv-123',
+    log_uri: 'file:///workspace/.logs/sub-123.log',
+    workspace_uris: ['file:///workspace'],
+  });
+
+  assert.deepEqual(envelope.structured_output, { findings: ['clean_arch'] });
+  assert.deepEqual(envelope.usage, {
+    input_tokens: 120,
+    output_tokens: 40,
+    thinking_tokens: 30,
+    cache_read_tokens: 50,
+    total_tokens: 160,
+  });
 });

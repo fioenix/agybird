@@ -5,7 +5,15 @@
 - Use `--category code --mode read` for review, diagnosis, architecture analysis, explanation, or planning that does not require edits.
 - Use `--category code --mode write` only when the user asks to implement, fix, refactor, add tests, or otherwise change files.
 
-State the exact requested scope in the prompt. Preserve the repository's own instructions and unrelated user changes.
+## Prompting best practices
+
+- **Partition complex changes into phases**:
+  1. *Exploration*: Instruct `agy` to inspect the target codebase and explain interface definitions without modifying files.
+  2. *Planning*: Request an explicit implementation plan outlining targeted files and logic changes.
+  3. *Execution*: Direct `agy` to apply edits once the plan is approved.
+- **Narrow the scope**: Provide absolute file paths or specific symbol names in the prompt to focus reasoning and minimize token overhead.
+- **Establish verification loops**: When asking `agy` to implement code, explicitly instruct it to execute existing test commands (e.g., `npm test`, `pytest`) to verify its changes before finishing.
+- **Preserve repository style**: State the exact requested scope. Preserve the repository's own conventions, formatting, and unrelated user changes.
 
 ## Verify independently
 
