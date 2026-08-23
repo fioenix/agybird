@@ -4,6 +4,16 @@ All notable changes to Agybird are documented in this file.
 
 ## Unreleased
 
+## 0.1.1 - 2026-08-23
+
+- Verified full compatibility with official Antigravity CLI `agy` v1.1.19.
+- Added background subagent hierarchy tracking: captures `subagent_info` from stream events and reports `subagents[]` (`type_name`, `role`, `conversation_id`, `log_uri`, `workspace_uris`) in the result envelope.
+- Enhanced token and thinking observability: `usage` metrics now expose `thinking_tokens` (for reasoning models) and `cache_read_tokens` (for prompt caching) alongside standard token counts.
+- Unified structured output extraction: `structured_output` is exposed at top-level envelope when `--json-schema` is enforced.
+- Expanded native tool allow-rule mappings for `grep_search`, `find_by_name`, `read_url_content`, and `call_mcp_tool`.
+- Added curated documentation hierarchy index in `references/docs.md` mapping core Antigravity architecture, headless IPC, permissions, sandbox, artifacts, and commands.
+- Enhanced prompt orchestration guidelines in `references/code.md`, `references/general.md`, `references/image.md`, and `references/common.md`.
+
 ## 0.1.0 - 2026-08-03
 
 First release.

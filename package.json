@@ -1,6 +1,6 @@
 {
   "name": "agybird",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Agent Skill bridge for the official Google Antigravity CLI",
   "type": "module",
   "private": true,
