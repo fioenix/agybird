@@ -160,6 +160,42 @@ test('maps view_file and list_dir denials onto read_file allow-rules', () => {
   assert.equal(outcome.permissionRequests[0].suggested_rule, 'read_file(/repo/src/main\\.ts)');
 });
 
+test('maps grep_search, find_by_name, read_url_content, and call_mcp_tool denials onto allow-rules', () => {
+  const cases = [
+    { tool: 'grep_search', params: { SearchPath: '/repo/src' }, expectedRule: 'read_file(/repo/src)' },
+    { tool: 'find_by_name', params: { SearchDirectory: '/repo/docs' }, expectedRule: 'read_file(/repo/docs)' },
+    { tool: 'read_url_content', params: { Url: 'https://example.com/api' }, expectedRule: 'read_url(https://example\\.com/api)' },
+    { tool: 'call_mcp_tool', params: { ServerName: 'github' }, expectedRule: 'mcp(github)' },
+  ];
+
+  for (const item of cases) {
+    const parser = createStreamParser();
+    parser.push([
+      '{"event":"init","conversation_id":"conv-extra"}',
+      JSON.stringify({
+        event: 'step_update',
+        step_update: {
+          step_index: 1,
+          state: 'ERROR',
+          step_type: 'tool',
+          tool_name: item.tool,
+          tool_info: {
+            name: item.tool,
+            parameters: item.params,
+            error: { type: 'TOOL_ERROR', message: `User denied permission to run ${item.tool}` },
+          },
+        },
+      }),
+      '{"event":"result","result":{"status":"SUCCESS","response":""}}',
+      '',
+    ].join('\n'));
+    const outcome = classifyOutcome({ parsed: parser.finish(), exitCode: 0, stderr: '' });
+
+    assert.equal(outcome.status, 'needs_permission', `${item.tool} must be grantable`);
+    assert.equal(outcome.permissionRequests[0].suggested_rule, item.expectedRule);
+  }
+});
+
 function deniedCommand(commandLine) {
   const parser = createStreamParser();
   parser.push([

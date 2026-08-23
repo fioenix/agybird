@@ -652,24 +652,28 @@ export function createStreamParser() {
 }
 
 const PERMISSION_DENIAL = /permission(?:s)? (?:denied|declined|required)|denied permission|auto-denied|not (?:executed|allowed|permitted)|user (?:denied|declined|rejected)|approval (?:denied|required)/i;
-// agy 1.1.9 emits this when no allow-rule can authorize the tool, so only
+// agy emits this when no allow-rule can authorize the tool, so only
 // --dangerously-skip-permissions would proceed. Agybird never offers that.
 const UNGRANTABLE_DENIAL = /Settings allow-rules do not apply/i;
 const FAILED_TOOL_STATUS = new Set(['error', 'failed', 'failure', 'denied', 'blocked', 'cancelled', 'canceled']);
 
-// Allow-rule kinds accepted by agy 1.1.9. The rule kind is the underlying
-// action, not the tool name: `view_file` is authorized by `read_file(...)`.
+// Allow-rule kinds accepted by agy (verified through 1.1.19). The rule kind is
+// the underlying action, not the tool name: `view_file` is authorized by `read_file(...)`.
 const RULE_KIND_BY_TOOL = new Map([
   ['run_command', 'command'],
   ['view_file', 'read_file'],
   ['list_dir', 'read_file'],
   ['read_file', 'read_file'],
+  ['grep_search', 'read_file'],
+  ['find_by_name', 'read_file'],
   ['write_to_file', 'write_file'],
   ['replace_file_content', 'write_file'],
   ['multi_replace_file_content', 'write_file'],
   ['edit_file', 'write_file'],
+  ['read_url_content', 'read_url'],
+  ['call_mcp_tool', 'mcp'],
 ]);
-const TARGET_PARAMETERS = ['CommandLine', 'AbsolutePath', 'DirectoryPath', 'TargetFile', 'FilePath', 'Url'];
+const TARGET_PARAMETERS = ['CommandLine', 'AbsolutePath', 'DirectoryPath', 'TargetFile', 'FilePath', 'Url', 'SearchPath', 'SearchDirectory', 'ServerName'];
 const MAX_PERMISSION_FIELD = 300;
 // A rule whose target runs to thousands of characters cannot be reviewed by the
 // person approving it. Past this the denial is still reported, but without a
