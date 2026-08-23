@@ -4,11 +4,11 @@ Use `--category image --mode write`. Agybird instructs Antigravity to use its bu
 
 ## Generate a new image
 
-Give Antigravity the intended subject, composition, style, aspect ratio, text requirements, and destination constraints. Do not choose a reasoning model merely to select Nano Banana; image generation is provided through the auxiliary `generate_image` tool.
+Give Antigravity the intended subject, composition, style, aspect ratio (`1:1`, `16:9`, `4:3`, `9:16`, `3:2`, `2:3`), text requirements, and destination constraints. Do not choose a reasoning model merely to select an image model; image generation is provided through the auxiliary `generate_image` tool.
 
 ## Edit a reference image
 
-Pass each source with a repeated absolute `--reference` argument. Agybird maps these paths into the tool's `ImagePaths` input. Describe what must change and what must remain unchanged.
+Pass each source with a repeated absolute `--reference` argument. Agybird maps these paths into the tool's `ImagePaths` input. Describe what must change and what must remain unchanged. Supported raster formats include PNG, JPG, JPEG, WebP, and GIF.
 
 ## Verify independently
 

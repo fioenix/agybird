@@ -39,6 +39,11 @@ The runner prints one JSON envelope to stdout:
 - `blocked`: an action was denied and no allow-rule applies.
 - `error`: process, stream, timeout, or artifact validation failed.
 
+The envelope provides comprehensive execution metrics:
+- `structured_output`: Parsed payload when `--json-schema` is enforced.
+- `subagents`: List of background subagents spawned by Antigravity during the run (`type_name`, `role`, `conversation_id`, `log_uri`, `workspace_uris`).
+- `usage`: Detailed token breakdown including `input_tokens`, `output_tokens`, `thinking_tokens` (reasoning models), `cache_read_tokens` (prompt cache), and `total_tokens`.
+
 Keep stderr as diagnostics; never parse it as the primary result.
 
 ## Stay in one session

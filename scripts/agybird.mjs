@@ -562,6 +562,30 @@ function mergeToolCall(toolCalls, update) {
   toolCalls.set(update.id, existing);
 }
 
+function normalizeSubagentInfo(event) {
+  const step = firstDefined(event.step, event.step_update, event.data?.step, event.update, event);
+  if (!step || typeof step !== 'object') return [];
+  const subagentInfo = step.subagent_info && typeof step.subagent_info === 'object' ? step.subagent_info : null;
+  const rawSubagents = subagentInfo
+    ? (Array.isArray(subagentInfo.subagents) ? subagentInfo.subagents : [subagentInfo])
+    : (Array.isArray(step.subagents) ? step.subagents : []);
+
+  const results = [];
+  for (const raw of rawSubagents) {
+    if (!raw || typeof raw !== 'object') continue;
+    const typeName = firstDefined(raw.type_name, raw.typeName, raw.type, raw.name);
+    if (!typeName && !raw.conversation_id && !raw.conversationId) continue;
+    results.push({
+      type_name: String(firstDefined(typeName, 'subagent')),
+      role: firstDefined(raw.role, null),
+      conversation_id: firstDefined(raw.conversation_id, raw.conversationId, null),
+      log_uri: firstDefined(raw.log_uri, raw.logUri, raw.transcript, null),
+      workspace_uris: Array.isArray(raw.workspace_uris) ? raw.workspace_uris : [],
+    });
+  }
+  return results;
+}
+
 export function createStreamParser() {
   let buffer = '';
   let lineNumber = 0;
@@ -570,6 +594,7 @@ export function createStreamParser() {
     response: null,
     structuredOutput: null,
     toolCalls: new Map(),
+    subagents: new Map(),
     artifacts: [],
     warnings: [],
     usage: null,
@@ -609,6 +634,12 @@ export function createStreamParser() {
     const toolUpdate = normalizeToolEvent(event);
     if (toolUpdate) mergeToolCall(state.toolCalls, toolUpdate);
 
+    const subagents = normalizeSubagentInfo(event);
+    for (const sub of subagents) {
+      const key = sub.conversation_id ?? `${sub.type_name}-${state.subagents.size}`;
+      state.subagents.set(key, sub);
+    }
+
     if (eventName === 'result') {
       state.sawTerminalResult = true;
       state.agyStatus = String(firstDefined(
@@ -646,6 +677,7 @@ export function createStreamParser() {
       return {
         ...state,
         toolCalls: [...state.toolCalls.values()],
+        subagents: [...state.subagents.values()],
       };
     },
   };
@@ -809,11 +841,13 @@ export function makeEnvelope({
     category,
     conversation_id: parsed.conversationId,
     response: parsed.response,
+    structured_output: parsed.structuredOutput ?? null,
     tool_calls: parsed.toolCalls.map((tool) => ({
       id: tool.id,
       name: tool.name,
       status: tool.status,
     })),
+    subagents: parsed.subagents ?? [],
     permission_requests: outcome.permissionRequests ?? [],
     artifacts,
     warnings: outcome.warnings,
@@ -1045,7 +1079,9 @@ function fatalEnvelope(category, error) {
     category: category ?? null,
     conversation_id: null,
     response: null,
+    structured_output: null,
     tool_calls: [],
+    subagents: [],
     permission_requests: [],
     artifacts: [],
     warnings: [error.message],
