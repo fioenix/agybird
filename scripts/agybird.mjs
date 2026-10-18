@@ -714,7 +714,7 @@ const PRINT_TIMEOUT_EXPIRED = /print timeout after .* returning partial output/i
 const AGENT_FAILURE_EXIT_CODE = 3;
 const FAILED_TOOL_STATUS = new Set(['error', 'failed', 'failure', 'denied', 'blocked', 'cancelled', 'canceled']);
 
-// Allow-rule kinds accepted by agy (verified through 1.1.19). The rule kind is
+// Allow-rule kinds accepted by agy (verified through 1.4.2). The rule kind is
 // the underlying action, not the tool name: `view_file` is authorized by `read_file(...)`.
 const RULE_KIND_BY_TOOL = new Map([
   ['run_command', 'command'],

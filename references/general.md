@@ -9,7 +9,8 @@ Default to `--mode read`. Use `--mode write` only when the requested outcome is 
 For structured output, enforce format constraints using `--json-schema`:
 - **JSON Schema object**: An inline schema string, e.g. `'{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"]}'`
 - **File path**: Path to a `.json` schema definition file.
-- **Primitive type**: A primitive type name (`string`, `number`, `integer`, `boolean`).
+
+The schema root must be `"type": "object"`. Since `agy` 1.2.14 plain text, a bare type name such as `string`, a missing file, or a non-object root fails at startup with exit code 1. Wrap a single value in an object property instead.
 
 The parsed payload will appear directly in `structured_output` within the result envelope. Keep the task bounded to the absolute working directory and name any required source files.
 
