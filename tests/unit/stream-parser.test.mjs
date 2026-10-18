@@ -424,3 +424,68 @@ test('explains exit code 3 as an agent or model failure', () => {
   assert.match(outcome.warnings.join('\n'), /agent or model API failed mid-turn/);
   assert.doesNotMatch(outcome.warnings.join('\n'), /UNAVAILABLE/, 'raw provider diagnostics stay out of the envelope');
 });
+
+// agy 1.2.2 deprecated `unsandboxed` rules, but its denials still name that kind.
+test('maps an ask_permission for the deprecated unsandboxed kind to a command rule', () => {
+  const parser = createStreamParser();
+  parser.push([
+    JSON.stringify({
+      event: 'step_update',
+      step_update: {
+        step_index: 3,
+        state: 'DONE',
+        step_type: 'tool',
+        tool_name: 'ask_permission',
+        tool_info: {
+          name: 'ask_permission',
+          parameters: { Action: 'unsandboxed', Target: 'sips -s format png in.jpg' },
+          error: { type: 'TOOL_ERROR', message: 'User denied permission to run command' },
+        },
+      },
+    }),
+    JSON.stringify({ event: 'result', result: { status: 'SUCCESS', response: '' } }),
+    '',
+  ].join('\n'));
+  const outcome = classifyOutcome({ parsed: parser.finish(), exitCode: 0, stderr: '' });
+
+  assert.equal(outcome.status, 'needs_permission');
+  assert.equal(outcome.permissionRequests[0].suggested_rule, 'command(sips -s format png in\\.jpg)');
+});
+
+test('describes every denied_actions entry that no tool event accounts for', () => {
+  const parser = createStreamParser();
+  parser.push([
+    JSON.stringify({
+      event: 'step_update',
+      step_update: {
+        step_index: 1,
+        state: 'ERROR',
+        step_type: 'tool',
+        tool_name: 'run_command',
+        tool_info: {
+          name: 'run_command',
+          parameters: { CommandLine: 'git push' },
+          error: { type: 'TOOL_ERROR', message: 'User denied permission to run command' },
+        },
+      },
+    }),
+    JSON.stringify({
+      event: 'result',
+      result: {
+        status: 'SUCCESS',
+        response: '',
+        denied_actions: [
+          { action: 'command', display_name: 'RunCommand' },
+          { action: 'command', display_name: 'RunCommand' },
+        ],
+      },
+    }),
+    '',
+  ].join('\n'));
+  const { permissionRequests } = classifyOutcome({ parsed: parser.finish(), exitCode: 0, stderr: '' });
+
+  assert.equal(permissionRequests.length, 2, 'the second refused command is not hidden behind the first');
+  assert.equal(permissionRequests[0].tool, 'run_command');
+  assert.equal(permissionRequests[1].tool, 'RunCommand');
+  assert.equal(permissionRequests[1].target, null);
+});

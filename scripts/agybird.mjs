@@ -769,7 +769,9 @@ function askedPermission(tool) {
   if (tool.name !== 'ask_permission') return null;
   const parameters = tool.arguments;
   if (!parameters || typeof parameters !== 'object') return null;
-  const action = typeof parameters.Action === 'string' ? parameters.Action.trim() : null;
+  const requested = typeof parameters.Action === 'string' ? parameters.Action.trim() : null;
+  // agy 1.2.2 replaced `unsandboxed(...)` rules with `command(...)`, yet still asks in the old kind.
+  const action = requested === 'unsandboxed' ? 'command' : requested;
   const target = typeof parameters.Target === 'string' && parameters.Target.trim() ? parameters.Target : null;
   if (!action || !target || !RULE_KINDS.has(action)) return null;
   return { kind: action, target };
@@ -786,7 +788,8 @@ function suggestedRule(kind, target) {
 // cannot phrase itself as an instruction to the approving agent.
 export function describePermissionRequests(parsed, stderr = '') {
   const requests = [];
-  const describedKinds = new Set();
+  // How many denials of each kind the tool events already explain.
+  const described = new Map();
   for (const tool of parsed.toolCalls) {
     const reason = typeof tool.error === 'string' ? tool.error : null;
     if (!reason || !PERMISSION_DENIAL.test(reason)) continue;
@@ -794,7 +797,7 @@ export function describePermissionRequests(parsed, stderr = '') {
     const target = asked?.target ?? permissionTarget(tool);
     const kind = asked?.kind ?? RULE_KIND_BY_TOOL.get(tool.name) ?? null;
     const display = target === null ? null : truncateField(target);
-    if (kind !== null) describedKinds.add(kind);
+    if (kind !== null) described.set(kind, (described.get(kind) ?? 0) + 1);
     requests.push({
       tool: tool.name,
       target: display,
@@ -813,8 +816,11 @@ export function describePermissionRequests(parsed, stderr = '') {
   // A denied action with no tool event behind it has no target, so the user can
   // be told what was refused but no rule can be offered for it.
   for (const denied of parsed.deniedActions ?? []) {
-    if (describedKinds.has(denied.action)) continue;
-    describedKinds.add(denied.action);
+    const explained = described.get(denied.action) ?? 0;
+    if (explained > 0) {
+      described.set(denied.action, explained - 1);
+      continue;
+    }
     requests.push({
       tool: denied.display_name,
       target: null,
