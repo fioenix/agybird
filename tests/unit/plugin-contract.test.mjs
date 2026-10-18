@@ -66,7 +66,43 @@ test('the Codex manifest describes the same plugin as the Claude Code manifest',
   }
   assert.deepEqual(codexPlugin.author, plugin.author);
   assert.deepEqual(codexPlugin.keywords, plugin.keywords);
+  assert.deepEqual(marketplace.plugins[0].keywords, plugin.keywords);
+  assert.equal(marketplace.plugins[0].description, plugin.description);
   assert.equal('$schema' in codexPlugin, false, 'the Codex format omits $schema');
+  // The runner spawns a local agy process, so the Codex directory must list it as Desktop only.
+  assert.equal(codexPlugin.requires_local_executor, true);
+});
+
+// Listing rules from the Claude directory pre-submission checklist and the Codex submission page.
+test('the listing meets both directories\' naming, contrast, and content rules', () => {
+  assert.match(plugin.name, /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/);
+  for (const field of ['icon', 'documentationUrl', 'supportUrl', 'privacyPolicyUrl', 'termsOfServiceUrl']) {
+    assert.equal(field in marketplace.plugins[0], false, `${field} belongs in plugin.json only`);
+  }
+  for (const url of [plugin.supportUrl, plugin.privacyPolicyUrl, plugin.termsOfServiceUrl, plugin.documentationUrl]) {
+    assert.match(url, /^https:\/\//);
+  }
+
+  const luminance = (hex) => {
+    const channel = (offset) => {
+      const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+      return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+  };
+  const contrast = (a, b) => {
+    const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (high + 0.05) / (low + 0.05);
+  };
+  assert.ok(contrast(codexPlugin.interface.brandColor, '#FFFFFF') >= 2);
+  assert.ok(contrast(codexPlugin.interface.brandColorDark, '#212121') >= 2);
+
+  const readme = read('README.md');
+  const prose = readme.replace(/```[\s\S]*?```/g, '');
+  assert.ok(prose.split(/\s+/).filter(Boolean).length >= 40, 'README needs 40 words outside code blocks');
+  const use = readme.slice(readme.indexOf('## Use'), readme.indexOf('\n## ', readme.indexOf('## Use') + 1));
+  assert.ok((use.match(/```text\n/g) ?? []).length >= 3, 'README needs three example prompts');
+  assert.match(readme, /## Data and network/);
 });
 
 // Codex 0.163 does not discover a SKILL.md at the plugin root, so its manifest points at a
