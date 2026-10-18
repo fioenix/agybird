@@ -528,3 +528,13 @@ test('records which subagents finished, apart from the ones only started', () =>
 
   assert.deepEqual(parsed.completedSubagents, ['sub-research']);
 });
+
+// A denial retained from earlier in the turn must not hide a later API failure.
+test('reports exit code 3 as an error even when the result kept a denial', () => {
+  const parsed = parseFixture('agy-1.4.2-image-subagent.ndjson');
+  const outcome = classifyOutcome({ parsed, exitCode: 3, stderr: '' });
+
+  assert.equal(outcome.status, 'error');
+  assert.match(outcome.warnings.join('\n'), /agent or model API failed mid-turn/);
+  assert.equal(outcome.permissionRequests.length, 1, 'the denial is still reported for context');
+});

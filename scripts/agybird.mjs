@@ -846,7 +846,13 @@ export function classifyOutcome({ parsed, exitCode, stderr, deadlineReached = fa
     ...toolErrors.flatMap((tool) => [tool.status, tool.error]).filter(Boolean),
   ].join('\n');
 
-  if (PERMISSION_DENIAL.test(permissionText) || (parsed.deniedActions ?? []).length > 0) {
+  const denied = PERMISSION_DENIAL.test(permissionText) || (parsed.deniedActions ?? []).length > 0;
+  // A denial kept from earlier in the turn must not hide that the turn then failed.
+  if (exitCode === AGENT_FAILURE_EXIT_CODE) {
+    warnings.push('agy exited with code 3: the agent or model API failed mid-turn; any response is partial.');
+    return { status: 'error', warnings, permissionRequests: denied ? describePermissionRequests(parsed, stderr) : [] };
+  }
+  if (denied) {
     const permissionRequests = describePermissionRequests(parsed, stderr);
     const grantable = permissionRequests.filter((request) => request.grantable);
     for (const request of grantable) {
@@ -857,10 +863,6 @@ export function classifyOutcome({ parsed, exitCode, stderr, deadlineReached = fa
       return { status: 'blocked', warnings, permissionRequests };
     }
     return { status: 'needs_permission', warnings, permissionRequests };
-  }
-  if (exitCode === AGENT_FAILURE_EXIT_CODE) {
-    warnings.push('agy exited with code 3: the agent or model API failed mid-turn; any response is partial.');
-    return { status: 'error', warnings };
   }
   if (exitCode !== 0) {
     warnings.push(`agy exited with code ${exitCode}`);
