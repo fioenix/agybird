@@ -1,5 +1,8 @@
 # Agybird
 
+![Agybird — Delegate work to the Antigravity CLI you already use.](assets/wordmark.svg#gh-light-mode-only)
+![Agybird — Delegate work to the Antigravity CLI you already use.](assets/wordmark-dark.svg#gh-dark-mode-only)
+
 [![release](https://img.shields.io/github/v/release/fioenix/agybird)](https://github.com/fioenix/agybird/releases/latest)
 [![CI](https://github.com/fioenix/agybird/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/fioenix/agybird/actions/workflows/ci.yml)
 
@@ -25,6 +28,8 @@ Google continues to enforce subscription eligibility, quota and credit availabil
 
 ## Install
 
+Every install path ships the same skill from the same files. Pick the plugin path for your agent to get versioned updates, or the Skills CLI for a plain skill install.
+
 ### As a Claude Code plugin
 
 Add the marketplace, then install the plugin:
@@ -35,6 +40,17 @@ Add the marketplace, then install the plugin:
 ```
 
 Claude Code pins the installed plugin to the version in `.claude-plugin/plugin.json`, so updates arrive only when that version changes. This path requires Claude Code v2.1.142 or newer.
+
+### As a Codex plugin
+
+Add the marketplace, then install the plugin:
+
+```bash
+codex plugin marketplace add fioenix/agybird
+codex plugin add agybird@agybird
+```
+
+You can also open `/plugins` inside Codex and install Agybird from the `agybird` marketplace. Start a new session afterwards so the skill loads. Codex caches each installed plugin by the version in `.codex-plugin/plugin.json`; to pick up a new release, run `codex plugin marketplace upgrade agybird` and then `codex plugin add agybird@agybird` again.
 
 ### As an Agent Skill
 
@@ -51,8 +67,6 @@ npx skills add fioenix/agybird --global --agent claude-code codex
 ```
 
 The command uses the open-source [Skills CLI](https://github.com/vercel-labs/skills). Review its prompt before confirming destinations.
-
-Both paths install the same skill from the same files. Use the plugin path for versioned updates inside Claude Code, and the skill path for Codex or for a plain skill install.
 
 ## Use
 
@@ -104,4 +118,4 @@ The automated suite is the current contract. Two earlier reports are kept as dat
 
 ## License
 
-[MIT](LICENSE). Use of Google Antigravity remains subject to [Google's Antigravity terms](https://antigravity.google/terms).
+[MIT](LICENSE). Use of Google Antigravity remains subject to [Google's Antigravity terms](https://antigravity.google/terms). See [PRIVACY.md](PRIVACY.md) for where delegated data goes and [TERMS.md](TERMS.md) for the terms of use.
