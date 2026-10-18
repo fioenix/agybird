@@ -36,6 +36,7 @@ function runRunner({
   projectsDir = fakeProjects,
   stateDir = fakeState,
   viaSymlink = false,
+  home,
 } = {}) {
   const entry = viaSymlink ? linkedRunnerPath : runnerPath;
   const args = [entry, '--category', category, '--cwd', cwd, '--mode', mode, '--timeout', timeout];
@@ -50,6 +51,7 @@ function runRunner({
         PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ''}`,
         AGYBIRD_PROJECTS_DIR: projectsDir,
         AGYBIRD_STATE_DIR: stateDir,
+        ...(home === undefined ? {} : { HOME: home, USERPROFILE: home }),
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -134,6 +136,21 @@ test('accepts image success only with completed tool event and real artifact', a
   assert.equal(envelope.artifacts.length, 1);
   assert.equal(envelope.artifacts[0].path, realpathSync(join(result.cwd, 'generated.png')));
   assert.equal(envelope.artifacts[0].size, 8);
+});
+
+test('accepts an image the image-generator subagent saved in the brain directory', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'agybird-home-'));
+  const result = await runRunner({ category: 'image', mode: 'write', prompt: 'CASE_IMAGE_SUBAGENT', home });
+  const envelope = parseSingleEnvelope(result.stdout);
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(envelope.status, 'success');
+  assert.equal(envelope.subagents[0].type_name, 'image-generator');
+  assert.equal(envelope.artifacts.length, 1);
+  assert.equal(
+    envelope.artifacts[0].path,
+    realpathSync(join(home, '.gemini', 'antigravity-cli', 'brain', 'fake-conversation', 'bird_1.jpg')),
+  );
 });
 
 test('reports an expired print timeout as partial, not success', async () => {

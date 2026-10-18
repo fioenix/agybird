@@ -469,7 +469,8 @@ export function buildDelegationPrompt(options, userPrompt) {
       common.push('Run the smallest relevant tests when the current permission policy allows it; otherwise state that the caller must verify independently. Summarize changed files and verification results.');
     }
   } else if (options.category === 'image') {
-    common.push('Use the built-in `generate_image` tool. Choose a clear ImageName and return every generated artifact path.');
+    common.push('Generate images with Antigravity\'s built-in image generation: the `image-generator` subagent, or the `generate_image` tool where it is offered directly. Wait for generation to finish, leave each image where Antigravity saved it, and return every absolute artifact path.');
+    common.push('Do not run shell commands to copy, convert, or resize images; the caller places the artifact.');
     if (options.references.length > 0) {
       common.push(`Edit the supplied reference image using ImagePaths exactly as provided: ${JSON.stringify(options.references)}`);
     } else {
@@ -1084,37 +1085,76 @@ function imagePathsFromText(value) {
     .map((match) => match[0]);
 }
 
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
+const COMPLETED_STATUS = ['done', 'completed', 'complete', 'success', 'succeeded'];
+const IMAGE_SUBAGENT = 'image-generator';
+
+// The brain directory of a conversation the stream named. The id comes from agy,
+// but it is still only a directory name: anything that would resolve elsewhere is dropped.
+function conversationDirectory(providerArtifactRoot, conversationId) {
+  if (typeof conversationId !== 'string' || !/^[A-Za-z0-9_-]+$/.test(conversationId)) return null;
+  const directory = resolve(providerArtifactRoot, conversationId);
+  if (!statOrNull(directory)?.isDirectory()) return null;
+  return realpathSync(directory);
+}
+
+// Images saved directly in a conversation directory since the run started. The
+// image-generator subagent reports no path, so this is the only way to find them;
+// the time bound keeps an image from an earlier turn from passing as this one's.
+function recentImages(directory, since) {
+  let entries;
+  try {
+    entries = readdirSync(directory, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return entries
+    .filter((entry) => entry.isFile() && IMAGE_EXTENSIONS.includes(extname(entry.name).toLowerCase()))
+    .map((entry) => join(directory, entry.name))
+    .filter((path) => (statOrNull(path)?.mtimeMs ?? 0) >= since);
+}
+
 export function verifyImageArtifacts(
   parsed,
   cwd,
   providerArtifactRoot = join(homedir(), '.gemini', 'antigravity-cli', 'brain'),
+  { since = null } = {},
 ) {
   const imageTools = parsed.toolCalls.filter((tool) => tool.name === 'generate_image');
-  const completed = imageTools.filter((tool) => ['done', 'completed', 'complete', 'success', 'succeeded'].includes(tool.status));
-  if (completed.length === 0) {
-    return { artifacts: [], error: imageTools.length === 0 ? 'No generate_image tool call was observed.' : null };
+  const completed = imageTools.filter((tool) => COMPLETED_STATUS.includes(tool.status));
+  // Since agy 1.2.16 the main agent hands image work to the image-generator subagent.
+  const imageSubagents = (parsed.subagents ?? []).filter((sub) => sub.type_name === IMAGE_SUBAGENT);
+  const subagentRan = imageSubagents.length > 0 && parsed.toolCalls.some(
+    (tool) => tool.name === 'invoke_subagent' && COMPLETED_STATUS.includes(tool.status),
+  );
+  if (completed.length === 0 && !subagentRan) {
+    return {
+      artifacts: [],
+      error: imageTools.length === 0
+        ? 'No image generation was observed (neither a generate_image call nor the image-generator subagent).'
+        : null,
+    };
   }
 
   const canonicalCwd = realpathSync(cwd);
+  const conversationRoots = [
+    conversationDirectory(providerArtifactRoot, parsed.conversationId),
+    ...imageSubagents.map((sub) => conversationDirectory(providerArtifactRoot, sub.conversation_id)),
+  ].filter((root) => root !== null);
   const candidates = new Set([
     ...parsed.artifacts.flatMap((artifact) => typeof artifact === 'string' ? [artifact] : collectArtifactPaths(artifact)),
     ...completed.flatMap((tool) => collectArtifactPaths(tool.result)),
     ...imagePathsFromText(parsed.response),
+    ...(subagentRan && since !== null ? conversationRoots.flatMap((root) => recentImages(root, since)) : []),
   ]);
   const artifacts = [];
-  const permittedRoots = [canonicalCwd];
-  if (parsed.conversationId) {
-    const conversationRoot = resolve(providerArtifactRoot, parsed.conversationId);
-    if (statOrNull(conversationRoot)?.isDirectory()) {
-      permittedRoots.push(realpathSync(conversationRoot));
-    }
-  }
+  const permittedRoots = [canonicalCwd, ...conversationRoots];
 
   for (const candidate of candidates) {
     const absolutePath = isAbsolute(candidate) ? candidate : resolve(cwd, candidate);
     const artifactStat = statOrNull(absolutePath);
     if (!artifactStat?.isFile() || artifactStat.size === 0) continue;
-    if (!['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(extname(absolutePath).toLowerCase())) continue;
+    if (!IMAGE_EXTENSIONS.includes(extname(absolutePath).toLowerCase())) continue;
     const canonicalArtifact = realpathSync(absolutePath);
     if (!permittedRoots.some((root) => pathIsWithin(canonicalArtifact, root))) continue;
     if (!artifacts.some((artifact) => artifact.path === canonicalArtifact)) {
@@ -1124,7 +1164,7 @@ export function verifyImageArtifacts(
 
   return {
     artifacts,
-    error: artifacts.length === 0 ? 'A completed generate_image tool call produced no valid image artifact.' : null,
+    error: artifacts.length === 0 ? 'Image generation completed but produced no valid image artifact.' : null,
   };
 }
 
@@ -1214,6 +1254,7 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
       process.once('SIGINT', onSignal);
       process.once('SIGTERM', onSignal);
     }
+    const startedAt = Date.now();
     const execution = await runAgy(options, delegatedPrompt, env);
     const parser = createStreamParser();
     parser.push(execution.stdout);
@@ -1232,7 +1273,8 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
 
     let artifacts = parsed.artifacts;
     if (options.category === 'image') {
-      const verified = verifyImageArtifacts(parsed, options.cwd);
+      // A filesystem mtime can trail the wall clock by its own resolution.
+      const verified = verifyImageArtifacts(parsed, options.cwd, undefined, { since: startedAt - 2_000 });
       artifacts = verified.artifacts;
       if (verified.error && outcome.status === 'success') {
         outcome = { ...outcome, status: 'error', warnings: [...outcome.warnings, verified.error] };

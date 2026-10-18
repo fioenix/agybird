@@ -30,11 +30,14 @@ test('code write mode scopes edits and requests verification', () => {
   assert.match(prompt, /changed files/i);
 });
 
-test('image generation requires the built-in generate_image tool', () => {
+test('image generation uses built-in generation and leaves artifacts in place', () => {
   const prompt = buildDelegationPrompt({ category: 'image', mode: 'write', references: [] }, 'Draw a blue bird.');
-  assert.match(prompt, /built-in `generate_image` tool/i);
-  assert.match(prompt, /ImageName/i);
-  assert.match(prompt, /return every generated artifact path/i);
+  // Since agy 1.2.16 the main agent hands images to the `image-generator` subagent.
+  assert.match(prompt, /`image-generator` subagent/);
+  assert.match(prompt, /`generate_image` tool/);
+  assert.match(prompt, /return every absolute artifact path/i);
+  // A headless run cannot approve the shell command a copy or resize needs.
+  assert.match(prompt, /Do not run shell commands to copy, convert, or resize/i);
 });
 
 test('image editing maps absolute references into ImagePaths', () => {

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 if (process.argv.includes('--version')) {
@@ -80,6 +81,23 @@ if (prompt.includes('CASE_DELAY')) {
   // agy 1.1.28+: an expired --print-timeout still exits 0 with a SUCCESS result.
   process.stderr.write('[agy] print timeout after 8s with turn in progress; returning partial output\n');
   emit({ event: 'result', result: { conversation_id: 'fake-conversation', status: 'SUCCESS', response: '' } });
+} else if (prompt.includes('CASE_IMAGE_SUBAGENT')) {
+  // agy 1.2.16+: the image-generator subagent saves into the conversation's brain directory.
+  const conversationRoot = join(homedir(), '.gemini', 'antigravity-cli', 'brain', 'fake-conversation');
+  mkdirSync(conversationRoot, { recursive: true });
+  writeFileSync(join(conversationRoot, 'bird_1.jpg'), Buffer.from([0xff, 0xd8, 0xff, 0xe0]));
+  emit({
+    event: 'step_update',
+    step_update: {
+      conversation_id: 'fake-conversation',
+      step_index: 2,
+      state: 'DONE',
+      step_type: 'subagent',
+      tool_name: 'invoke_subagent',
+      subagent_info: { subagents: [{ type_name: 'image-generator', role: 'Image Generator', conversation_id: 'fake-subagent' }] },
+    },
+  });
+  emit({ event: 'result', result: { conversation_id: 'fake-conversation', status: 'SUCCESS', response: 'Generated the bird.' } });
 } else {
   emit({ type: 'result', status: 'success', response: 'ok', usage: { output_tokens: 1 } });
 }
