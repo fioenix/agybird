@@ -69,7 +69,7 @@ Word the resume prompt as an explicit grant. Sending only "Continue." makes the 
 
 Expect more than one round. The model often requests a broader rule than the single call that was denied — a denied `git log -1 --format=%H` came back as a request for `command(git)` — and after that is granted it may need a separate `read_file` rule. Each round is a fresh decision for the user; do not pre-approve the next one.
 
-Allow-rule syntax, verified against `agy` 1.1.9 through 1.1.19. The rule names the underlying action, not the tool: `view_file` and `list_dir` are both authorized by `read_file`.
+Allow-rule syntax, verified against `agy` 1.1.9 through 1.4.2. The rule names the underlying action, not the tool: `view_file` and `list_dir` are both authorized by `read_file`. Since 1.2.7 the default agent no longer has `list_dir`, `grep_search`, or `find_by_name`; custom agents that list them still use them, and the runner still maps them to `read_file`.
 
 | Rule | Authorizes |
 | --- | --- |
@@ -77,8 +77,9 @@ Allow-rule syntax, verified against `agy` 1.1.9 through 1.1.19. The rule names t
 | `read_file(/path/to/file)` | Reading that file; a directory target allows reading anything inside it. |
 | `write_file(/path/to/file)` | Writing that path. |
 | `mcp(server/tool)` | One MCP tool. |
-| `read_url(example.com)` / `execute_url(127.0.0.1)` | Network reads and local URL execution. |
-| `unsandboxed(/path/to/binary)` | Running that binary outside the sandbox. |
+| `read_url(example.com)` / `execute_url(127.0.0.1)` | Network reads and local URL execution. Since 1.1.28 reading a URL asks first by default, so a headless run needs a `read_url` rule. |
+
+`agy` 1.2.2 deprecated `unsandboxed(...)` rules and warns about them at startup; authorize the command with `command(...)` instead. The runner no longer accepts `unsandboxed` in `--grant`. A denial message can still read `permission check failed for unsandboxed "..."`; the rule it needs is the `command(...)` one the runner suggests.
 
 Targets are matched as regular expressions, so literal `.` must be escaped: `command(launchctl unload ~/Library/LaunchAgents/ing\.paperclip\.server\.plist)`.
 
@@ -103,4 +104,6 @@ Report the quota result. Do not modify `useG1Credits` automatically. Ask for exp
 
 ## Stream or artifact validation fails
 
-Keep the status as `partial` or `error`, preserve the sanitized warning, and check `agy --version` against current official [headless documentation](https://antigravity.google/docs/cli/headless). Do not guess a new event schema from prose output. For images, inspect the `generate_image` tool event and verify the artifact inside the working directory or the exact matching `brain/<conversation_id>` artifact directory.
+Keep the status as `partial` or `error`, preserve the sanitized warning, and check `agy --version` against current official [headless documentation](https://antigravity.google/docs/cli/headless) and `agy changelog`. Do not guess a new event schema from prose output. For images, look for the `image-generator` entry in `subagents[]` (or a `generate_image` call on older `agy`) and verify the artifact inside the working directory or the matching `brain/<conversation_id>` directory of the run or its image subagent.
+
+A `partial` with a warning that `--print-timeout` expired means the turn was cut short; rerun with a longer `--timeout` in the same session. An `error` after exit code 3 means the agent or model API failed mid-turn (agy prints an `AGY_ERROR` line on stderr); the runner keeps that line out of the envelope, so rerun the follow-up in the same session or check quota and service status.

@@ -4,6 +4,17 @@ All notable changes to Agybird are documented in this file.
 
 ## Unreleased
 
+Verified against `agy` 1.4.2 with live headless runs on macOS: a read-only task, a denied command, an expired print timeout, and image generation.
+
+- An expired `--timeout` is reported as `partial`, from agy's stderr notice or from the run lasting the full timeout. Since `agy` 1.1.28 the CLI answers it with exit 0 and a `SUCCESS` result, which the runner used to report as `success` with an empty or cut-off response. The runner now waits a grace period of 5 to 10 seconds past `--print-timeout` before killing `agy`, so that partial answer arrives.
+- Image work through the `image-generator` subagent is recognised. Since `agy` 1.2.16 the main agent no longer calls `generate_image` itself, so every image run ended in `error`. The runner now accepts a completed `image-generator` subagent and takes its output from the subagent's transcript, which records each `generate_image` result; only those images, inside the brain directory of the run's conversation or its image subagent, count. The delegated prompt no longer asks for `generate_image` by name, and tells Antigravity not to copy or convert images with shell commands, which a headless run cannot approve.
+- `denied_actions` on the terminal result now counts as a permission outcome. Each action reported only there appears in `permission_requests[]` without a target or a suggested rule, and the run is `blocked` instead of `success`.
+- Exit code 3 is explained as an agent or model API failure mid-turn. The `AGY_ERROR` line stays out of the envelope with the rest of stderr.
+- `--effort` accepts `xhigh` and `max`.
+- `unsandboxed(...)` is no longer accepted by `--grant`; `agy` 1.2.2 deprecated it in favour of `command(...)`. When agy still asks for an `unsandboxed` grant, the runner suggests the matching `command(...)` rule.
+- A conversation id from the stream is used as a brain directory only when it is a plain directory name.
+- References updated for the `--json-schema` object-root requirement, the ask-first default for URL reads, plan-mode approval requests, and the retired default search tools.
+
 ## 0.1.1 - 2026-08-23
 
 - Verified full compatibility with official Antigravity CLI `agy` v1.1.19.

@@ -10,7 +10,7 @@ Agybird is unofficial and is not affiliated with Google.
 ## What it covers
 
 - **Code:** read-only review or scoped implementation, followed by independent diff and test verification.
-- **Image:** new image generation and reference-image editing through Antigravity's built-in `generate_image` tool, followed by artifact and visual verification.
+- **Image:** new image generation and reference-image editing through Antigravity's built-in `image-generator` subagent and its `generate_image` tool, followed by artifact and visual verification.
 - **General:** read-only analysis by default, structured JSON output, or explicit deliverable creation.
 
 This is an Agent Skill plus a small local runner, not an MCP server. Claude Code or Codex remains the orchestrator; `agy` remains the authenticated provider process.

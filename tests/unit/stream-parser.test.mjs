@@ -335,3 +335,206 @@ test('parses subagents and detailed usage metrics including thinking and cache t
     total_tokens: 160,
   });
 });
+
+test('parses a read-only run captured from agy 1.4.2', () => {
+  const parsed = parseFixture('agy-1.4.2.ndjson');
+
+  assert.equal(parsed.conversationId, '485dcee1-1118-438f-b42c-a39ece3127d2');
+  assert.equal(parsed.response, 'hello from probe\n');
+  assert.equal(parsed.agyStatus, 'SUCCESS');
+  assert.equal(parsed.usage.thinking_tokens, 0);
+  assert.equal(parsed.usage.cache_read_tokens, 37000);
+  assert.deepEqual(parsed.deniedActions, []);
+  assert.equal(classifyOutcome({ parsed, exitCode: 0, stderr: '' }).status, 'success');
+});
+
+// Since agy 1.1.28 an expired --print-timeout exits 0 with a SUCCESS result and
+// whatever partial response exists; only stderr says the turn did not finish.
+test('reports an expired print timeout as partial although agy exits zero', () => {
+  const parsed = parseFixture('agy-1.4.2-print-timeout.ndjson');
+  assert.equal(parsed.agyStatus, 'SUCCESS');
+
+  const outcome = classifyOutcome({
+    parsed,
+    exitCode: 0,
+    stderr: '[agy] print timeout after 8s with turn in progress; returning partial output\n',
+  });
+  assert.equal(outcome.status, 'partial');
+  assert.match(outcome.warnings.join('\n'), /print-timeout expired before the turn finished/);
+});
+
+test('reads denied_actions from the terminal result without duplicating a described denial', () => {
+  const parsed = parseFixture('agy-1.4.2-image-subagent.ndjson');
+  assert.deepEqual(parsed.deniedActions, [{ action: 'command', display_name: 'RunCommand' }]);
+
+  const outcome = classifyOutcome({ parsed, exitCode: 0, stderr: '' });
+  assert.equal(outcome.status, 'needs_permission');
+  assert.equal(outcome.permissionRequests.length, 1, 'the denied command is already described by its tool event');
+  assert.equal(outcome.permissionRequests[0].tool, 'run_command');
+  assert.match(outcome.permissionRequests[0].suggested_rule, /^command\(sips /);
+});
+
+// agy 1.1.27 reports refused actions in denied_actions; a run can end with no
+// tool error text at all, and must still not be reported as success.
+test('treats denied_actions alone as a permission outcome with no rule to suggest', () => {
+  const parser = createStreamParser();
+  parser.push(`${JSON.stringify({
+    event: 'result',
+    result: {
+      conversation_id: 'conv-denied-only',
+      status: 'SUCCESS',
+      response: 'Skipped the command.',
+      denied_actions: [{ action: 'read_url', display_name: 'ReadUrlContent' }],
+    },
+  })}\n`);
+  const outcome = classifyOutcome({ parsed: parser.finish(), exitCode: 0, stderr: '' });
+
+  assert.equal(outcome.status, 'blocked');
+  assert.equal(outcome.permissionRequests.length, 1);
+  assert.equal(outcome.permissionRequests[0].tool, 'ReadUrlContent');
+  assert.equal(outcome.permissionRequests[0].target, null);
+  assert.equal(outcome.permissionRequests[0].suggested_rule, null);
+  assert.equal(outcome.permissionRequests[0].grantable, false);
+  assert.match(outcome.warnings.join('\n'), /no allow-rule can be suggested/);
+});
+
+test('ignores malformed denied_actions entries and cuts their fields', () => {
+  const parser = createStreamParser();
+  parser.push(`${JSON.stringify({
+    event: 'result',
+    result: {
+      status: 'SUCCESS',
+      response: '',
+      denied_actions: [null, 'command', { action: 'command', display_name: `Run\n${'x'.repeat(400)}` }],
+    },
+  })}\n`);
+  const parsed = parser.finish();
+
+  assert.equal(parsed.deniedActions.length, 1);
+  assert.ok(parsed.deniedActions[0].display_name.length <= 300);
+  assert.doesNotMatch(parsed.deniedActions[0].display_name, /\n/);
+});
+
+// agy 1.2.6 exits 3 when the agent or model API fails mid-turn.
+test('explains exit code 3 as an agent or model failure', () => {
+  const parsed = parseFixture('success.ndjson');
+  const outcome = classifyOutcome({ parsed, exitCode: 3, stderr: 'AGY_ERROR: {"status":"UNAVAILABLE"}\n' });
+
+  assert.equal(outcome.status, 'error');
+  assert.match(outcome.warnings.join('\n'), /agent or model API failed mid-turn/);
+  assert.doesNotMatch(outcome.warnings.join('\n'), /UNAVAILABLE/, 'raw provider diagnostics stay out of the envelope');
+});
+
+// agy 1.2.2 deprecated `unsandboxed` rules, but its denials still name that kind.
+test('maps an ask_permission for the deprecated unsandboxed kind to a command rule', () => {
+  const parser = createStreamParser();
+  parser.push([
+    JSON.stringify({
+      event: 'step_update',
+      step_update: {
+        step_index: 3,
+        state: 'DONE',
+        step_type: 'tool',
+        tool_name: 'ask_permission',
+        tool_info: {
+          name: 'ask_permission',
+          parameters: { Action: 'unsandboxed', Target: 'sips -s format png in.jpg' },
+          error: { type: 'TOOL_ERROR', message: 'User denied permission to run command' },
+        },
+      },
+    }),
+    JSON.stringify({ event: 'result', result: { status: 'SUCCESS', response: '' } }),
+    '',
+  ].join('\n'));
+  const outcome = classifyOutcome({ parsed: parser.finish(), exitCode: 0, stderr: '' });
+
+  assert.equal(outcome.status, 'needs_permission');
+  assert.equal(outcome.permissionRequests[0].suggested_rule, 'command(sips -s format png in\\.jpg)');
+});
+
+test('describes every denied_actions entry that no tool event accounts for', () => {
+  const parser = createStreamParser();
+  parser.push([
+    JSON.stringify({
+      event: 'step_update',
+      step_update: {
+        step_index: 1,
+        state: 'ERROR',
+        step_type: 'tool',
+        tool_name: 'run_command',
+        tool_info: {
+          name: 'run_command',
+          parameters: { CommandLine: 'git push' },
+          error: { type: 'TOOL_ERROR', message: 'User denied permission to run command' },
+        },
+      },
+    }),
+    JSON.stringify({
+      event: 'result',
+      result: {
+        status: 'SUCCESS',
+        response: '',
+        denied_actions: [
+          { action: 'command', display_name: 'RunCommand' },
+          { action: 'command', display_name: 'RunCommand' },
+        ],
+      },
+    }),
+    '',
+  ].join('\n'));
+  const { permissionRequests } = classifyOutcome({ parsed: parser.finish(), exitCode: 0, stderr: '' });
+
+  assert.equal(permissionRequests.length, 2, 'the second refused command is not hidden behind the first');
+  assert.equal(permissionRequests[0].tool, 'run_command');
+  assert.equal(permissionRequests[1].tool, 'RunCommand');
+  assert.equal(permissionRequests[1].target, null);
+});
+
+// The stderr notice is agy's wording, so reaching the deadline is a signal of its own.
+test('reports a run that reached its print timeout as partial without the stderr notice', () => {
+  const parsed = parseFixture('agy-1.4.2-print-timeout.ndjson');
+  const outcome = classifyOutcome({ parsed, exitCode: 0, stderr: '', deadlineReached: true });
+
+  assert.equal(outcome.status, 'partial');
+  assert.match(outcome.warnings.join('\n'), /print-timeout expired before the turn finished/);
+});
+
+test('records which subagents finished, apart from the ones only started', () => {
+  const parser = createStreamParser();
+  parser.push([
+    JSON.stringify({
+      event: 'step_update',
+      step_update: {
+        step_index: 2,
+        state: 'ACTIVE',
+        step_type: 'subagent',
+        tool_name: 'invoke_subagent',
+        subagent_info: { subagents: [{ type_name: 'image-generator', conversation_id: 'sub-image' }] },
+      },
+    }),
+    JSON.stringify({
+      event: 'step_update',
+      step_update: {
+        step_index: 3,
+        state: 'DONE',
+        step_type: 'subagent',
+        tool_name: 'invoke_subagent',
+        subagent_info: { subagents: [{ type_name: 'research', conversation_id: 'sub-research' }] },
+      },
+    }),
+    '',
+  ].join('\n'));
+  const parsed = parser.finish();
+
+  assert.deepEqual(parsed.completedSubagents, ['sub-research']);
+});
+
+// A denial retained from earlier in the turn must not hide a later API failure.
+test('reports exit code 3 as an error even when the result kept a denial', () => {
+  const parsed = parseFixture('agy-1.4.2-image-subagent.ndjson');
+  const outcome = classifyOutcome({ parsed, exitCode: 3, stderr: '' });
+
+  assert.equal(outcome.status, 'error');
+  assert.match(outcome.warnings.join('\n'), /agent or model API failed mid-turn/);
+  assert.equal(outcome.permissionRequests.length, 1, 'the denial is still reported for context');
+});

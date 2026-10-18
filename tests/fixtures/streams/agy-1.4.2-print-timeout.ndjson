@@ -1,0 +1,2 @@
+{"event":"init","conversation_id":"e3aeffbc-2af5-4832-89fb-510845572c66","init":{"cwd":"/workspace","tools":["ask_custom_permission","ask_permission","ask_question"],"permission_mode":"request-review","expanded_commands":[{"name":"plan","type":"system"}]}}
+{"event":"result","result":{"conversation_id":"e3aeffbc-2af5-4832-89fb-510845572c66","status":"SUCCESS","response":"","duration_seconds":0,"num_turns":0,"usage":{"input_tokens":0,"output_tokens":0,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":0}}}

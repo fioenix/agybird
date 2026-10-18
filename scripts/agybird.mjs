@@ -19,7 +19,7 @@ import {
 } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, delimiter, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const VALUE_OPTIONS = new Map([
   ['--category', 'category'],
@@ -102,7 +102,7 @@ export function validateRequest(options) {
   if (!['read', 'write'].includes(options.mode)) {
     throw new Error(`Invalid mode: ${options.mode}`);
   }
-  if (options.effort !== undefined && !['low', 'medium', 'high'].includes(options.effort)) {
+  if (options.effort !== undefined && !['low', 'medium', 'high', 'xhigh', 'max'].includes(options.effort)) {
     throw new Error(`Invalid effort: ${options.effort}`);
   }
   if (!isAbsolute(options.cwd)) {
@@ -152,7 +152,8 @@ export function validateRequest(options) {
 }
 
 const PROJECTS_DIRECTORY = join(homedir(), '.gemini', 'config', 'projects');
-const RULE_KINDS = new Set(['command', 'read_file', 'write_file', 'mcp', 'read_url', 'execute_url', 'unsandboxed']);
+// agy 1.2.2 deprecated `unsandboxed(...)` rules in favour of `command(...)`.
+const RULE_KINDS = new Set(['command', 'read_file', 'write_file', 'mcp', 'read_url', 'execute_url']);
 const RULE_PATTERN = /^([a-z_]+)\(([\s\S]+)\)$/;
 const RULE_METACHARACTERS = new Set(['.', '*', '+', '?', '^', '$', '{', '}', '(', ')', '|', '[', ']']);
 
@@ -468,7 +469,8 @@ export function buildDelegationPrompt(options, userPrompt) {
       common.push('Run the smallest relevant tests when the current permission policy allows it; otherwise state that the caller must verify independently. Summarize changed files and verification results.');
     }
   } else if (options.category === 'image') {
-    common.push('Use the built-in `generate_image` tool. Choose a clear ImageName and return every generated artifact path.');
+    common.push('Generate images with Antigravity\'s built-in image generation: the `image-generator` subagent, or the `generate_image` tool where it is offered directly. Wait for generation to finish, leave each image where Antigravity saved it, and return every absolute artifact path.');
+    common.push('Do not run shell commands to copy, convert, or resize images; the caller places the artifact.');
     if (options.references.length > 0) {
       common.push(`Edit the supplied reference image using ImagePaths exactly as provided: ${JSON.stringify(options.references)}`);
     } else {
@@ -586,6 +588,20 @@ function normalizeSubagentInfo(event) {
   return results;
 }
 
+// agy 1.1.27+ lists the actions a headless run refused as `denied_actions` on
+// the terminal result. They name the action kind but not its target.
+function normalizeDeniedActions(entries) {
+  const actions = [];
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object' || typeof entry.action !== 'string' || !entry.action.trim()) continue;
+    actions.push({
+      action: truncateField(entry.action),
+      display_name: truncateField(typeof entry.display_name === 'string' && entry.display_name.trim() ? entry.display_name : entry.action),
+    });
+  }
+  return actions;
+}
+
 export function createStreamParser() {
   let buffer = '';
   let lineNumber = 0;
@@ -595,9 +611,11 @@ export function createStreamParser() {
     structuredOutput: null,
     toolCalls: new Map(),
     subagents: new Map(),
+    completedSubagents: new Set(),
     artifacts: [],
     warnings: [],
     usage: null,
+    deniedActions: [],
     sawTerminalResult: false,
     agyStatus: null,
   };
@@ -635,9 +653,11 @@ export function createStreamParser() {
     if (toolUpdate) mergeToolCall(state.toolCalls, toolUpdate);
 
     const subagents = normalizeSubagentInfo(event);
+    const subagentStepDone = COMPLETED_STATUS.includes(toolUpdate?.status);
     for (const sub of subagents) {
       const key = sub.conversation_id ?? `${sub.type_name}-${state.subagents.size}`;
       state.subagents.set(key, sub);
+      if (subagentStepDone && sub.conversation_id) state.completedSubagents.add(sub.conversation_id);
     }
 
     if (eventName === 'result') {
@@ -656,6 +676,9 @@ export function createStreamParser() {
         state.response,
       );
       state.usage = firstDefined(terminal.usage, terminal.stats, state.usage);
+      if (Array.isArray(terminal.denied_actions)) {
+        state.deniedActions = normalizeDeniedActions(terminal.denied_actions);
+      }
       const eventArtifacts = firstDefined(terminal.artifacts, terminal.files);
       if (Array.isArray(eventArtifacts)) state.artifacts.push(...eventArtifacts);
     }
@@ -678,6 +701,7 @@ export function createStreamParser() {
         ...state,
         toolCalls: [...state.toolCalls.values()],
         subagents: [...state.subagents.values()],
+        completedSubagents: [...state.completedSubagents],
       };
     },
   };
@@ -687,9 +711,14 @@ const PERMISSION_DENIAL = /permission(?:s)? (?:denied|declined|required)|denied 
 // agy emits this when no allow-rule can authorize the tool, so only
 // --dangerously-skip-permissions would proceed. Agybird never offers that.
 const UNGRANTABLE_DENIAL = /Settings allow-rules do not apply/i;
+// agy 1.1.28+ ends an expired --print-timeout with exit 0 and a SUCCESS result;
+// only this stderr notice says the turn was cut short.
+const PRINT_TIMEOUT_EXPIRED = /print timeout after .* returning partial output/i;
+// agy 1.2.6+ exits 3 (with an AGY_ERROR line on stderr) when the agent or model API fails.
+const AGENT_FAILURE_EXIT_CODE = 3;
 const FAILED_TOOL_STATUS = new Set(['error', 'failed', 'failure', 'denied', 'blocked', 'cancelled', 'canceled']);
 
-// Allow-rule kinds accepted by agy (verified through 1.1.19). The rule kind is
+// Allow-rule kinds accepted by agy (verified through 1.4.2). The rule kind is
 // the underlying action, not the tool name: `view_file` is authorized by `read_file(...)`.
 const RULE_KIND_BY_TOOL = new Map([
   ['run_command', 'command'],
@@ -744,7 +773,9 @@ function askedPermission(tool) {
   if (tool.name !== 'ask_permission') return null;
   const parameters = tool.arguments;
   if (!parameters || typeof parameters !== 'object') return null;
-  const action = typeof parameters.Action === 'string' ? parameters.Action.trim() : null;
+  const requested = typeof parameters.Action === 'string' ? parameters.Action.trim() : null;
+  // agy 1.2.2 replaced `unsandboxed(...)` rules with `command(...)`, yet still asks in the old kind.
+  const action = requested === 'unsandboxed' ? 'command' : requested;
   const target = typeof parameters.Target === 'string' && parameters.Target.trim() ? parameters.Target : null;
   if (!action || !target || !RULE_KINDS.has(action)) return null;
   return { kind: action, target };
@@ -761,6 +792,8 @@ function suggestedRule(kind, target) {
 // cannot phrase itself as an instruction to the approving agent.
 export function describePermissionRequests(parsed, stderr = '') {
   const requests = [];
+  // How many denials of each kind the tool events already explain.
+  const described = new Map();
   for (const tool of parsed.toolCalls) {
     const reason = typeof tool.error === 'string' ? tool.error : null;
     if (!reason || !PERMISSION_DENIAL.test(reason)) continue;
@@ -768,6 +801,7 @@ export function describePermissionRequests(parsed, stderr = '') {
     const target = asked?.target ?? permissionTarget(tool);
     const kind = asked?.kind ?? RULE_KIND_BY_TOOL.get(tool.name) ?? null;
     const display = target === null ? null : truncateField(target);
+    if (kind !== null) described.set(kind, (described.get(kind) ?? 0) + 1);
     requests.push({
       tool: tool.name,
       target: display,
@@ -783,10 +817,28 @@ export function describePermissionRequests(parsed, stderr = '') {
       reason: truncateField(reason),
     });
   }
+  // A denied action with no tool event behind it has no target, so the user can
+  // be told what was refused but no rule can be offered for it.
+  for (const denied of parsed.deniedActions ?? []) {
+    const explained = described.get(denied.action) ?? 0;
+    if (explained > 0) {
+      described.set(denied.action, explained - 1);
+      continue;
+    }
+    requests.push({
+      tool: denied.display_name,
+      target: null,
+      target_truncated: false,
+      suggested_rule: null,
+      grantable: false,
+      settings_path: GLOBAL_SETTINGS_PATH,
+      reason: `Antigravity reported a denied ${denied.action} action without its target.`,
+    });
+  }
   return requests;
 }
 
-export function classifyOutcome({ parsed, exitCode, stderr }) {
+export function classifyOutcome({ parsed, exitCode, stderr, deadlineReached = false }) {
   const warnings = [...parsed.warnings];
   const toolErrors = parsed.toolCalls.filter((tool) => FAILED_TOOL_STATUS.has(tool.status) || tool.error);
   const permissionText = [
@@ -794,14 +846,20 @@ export function classifyOutcome({ parsed, exitCode, stderr }) {
     ...toolErrors.flatMap((tool) => [tool.status, tool.error]).filter(Boolean),
   ].join('\n');
 
-  if (PERMISSION_DENIAL.test(permissionText)) {
+  const denied = PERMISSION_DENIAL.test(permissionText) || (parsed.deniedActions ?? []).length > 0;
+  // A denial kept from earlier in the turn must not hide that the turn then failed.
+  if (exitCode === AGENT_FAILURE_EXIT_CODE) {
+    warnings.push('agy exited with code 3: the agent or model API failed mid-turn; any response is partial.');
+    return { status: 'error', warnings, permissionRequests: denied ? describePermissionRequests(parsed, stderr) : [] };
+  }
+  if (denied) {
     const permissionRequests = describePermissionRequests(parsed, stderr);
     const grantable = permissionRequests.filter((request) => request.grantable);
     for (const request of grantable) {
       warnings.push(`Antigravity denied \`${request.tool}\` on ${JSON.stringify(request.target)}; allow-rule \`${request.suggested_rule}\` under permissions.allow in ${request.settings_path} would authorize it.`);
     }
     if (grantable.length === 0) {
-      warnings.push('Antigravity permission policy blocked at least one requested action and no allow-rule can authorize it.');
+      warnings.push('Antigravity permission policy blocked at least one requested action and no allow-rule can be suggested for it.');
       return { status: 'blocked', warnings, permissionRequests };
     }
     return { status: 'needs_permission', warnings, permissionRequests };
@@ -809,6 +867,10 @@ export function classifyOutcome({ parsed, exitCode, stderr }) {
   if (exitCode !== 0) {
     warnings.push(`agy exited with code ${exitCode}`);
     return { status: 'error', warnings };
+  }
+  if (deadlineReached || PRINT_TIMEOUT_EXPIRED.test(stderr)) {
+    warnings.push('agy --print-timeout expired before the turn finished; the response is incomplete.');
+    return { status: 'partial', warnings };
   }
   if (!parsed.sawTerminalResult) {
     warnings.push('Antigravity stream ended without a terminal result event.');
@@ -860,6 +922,18 @@ export function makeEnvelope({
       ...(agyVersion === undefined ? {} : { agy_version: agyVersion }),
     },
   };
+}
+
+// agy 1.1.28+ answers an expired --print-timeout itself with the partial output,
+// so the hard kill waits a little longer to let that answer arrive.
+// The kill timer starts at spawn, before agy's own timer, so the grace never
+// drops below a fixed minimum however short the timeout.
+export function killGrace(timeout) {
+  return Math.max(5_000, Math.min(10_000, timeoutToMilliseconds(timeout)));
+}
+
+export function killDeadline(timeout) {
+  return timeoutToMilliseconds(timeout) + killGrace(timeout);
 }
 
 export function timeoutToMilliseconds(timeout) {
@@ -988,17 +1062,19 @@ export async function runAgy(options, delegatedPrompt, env = process.env) {
     throw new Error('Official Antigravity CLI version preflight failed');
   }
 
+  const startedAt = Date.now();
   const execution = await spawnCaptured(
     binary.command,
     [...binary.prefixArgs, ...buildAgyArgs(options, delegatedPrompt)],
     {
       cwd: options.cwd,
       env,
-      timeoutMs: timeoutToMilliseconds(options.timeout),
+      timeoutMs: killDeadline(options.timeout),
     },
   );
   return {
     ...execution,
+    elapsedMs: Date.now() - startedAt,
     binaryPath: binary.displayPath,
     version: preflight.stdout.trim().split(/\r?\n/, 1)[0],
   };
@@ -1028,37 +1104,105 @@ function imagePathsFromText(value) {
     .map((match) => match[0]);
 }
 
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
+const COMPLETED_STATUS = ['done', 'completed', 'complete', 'success', 'succeeded'];
+const IMAGE_SUBAGENT = 'image-generator';
+
+// The brain directory of a conversation the stream named. The id comes from agy,
+// but it is still only a directory name: anything that would resolve elsewhere is dropped.
+function conversationDirectory(providerArtifactRoot, conversationId) {
+  if (typeof conversationId !== 'string' || !/^[A-Za-z0-9_-]+$/.test(conversationId)) return null;
+  const directory = resolve(providerArtifactRoot, conversationId);
+  if (!statOrNull(directory)?.isDirectory()) return null;
+  return realpathSync(directory);
+}
+
+const MAX_TRANSCRIPT_BYTES = 16 * 1024 * 1024;
+
+// The images an image-generator subagent produced, read from the transcript agy
+// keeps for it. The stream reports no path, and a directory listing cannot tell a
+// generated image from a screenshot or an earlier turn's output; the transcript
+// attaches each generate_image result's media to the step that answered the call.
+function generatedImagesFromTranscript(subagentDirectory) {
+  const transcriptPath = join(subagentDirectory, '.system_generated', 'logs', 'transcript.jsonl');
+  const transcriptStat = statOrNull(transcriptPath);
+  if (!transcriptStat?.isFile() || transcriptStat.size > MAX_TRANSCRIPT_BYTES) return [];
+  const paths = [];
+  let pendingTools = [];
+  for (const line of readFileSync(transcriptPath, 'utf8').split('\n')) {
+    let step;
+    try {
+      step = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!step || typeof step !== 'object') continue;
+    if (step.type === 'PLANNER_RESPONSE') {
+      pendingTools = Array.isArray(step.tool_calls) ? step.tool_calls.map((call) => call?.name) : [];
+      continue;
+    }
+    // A system message (such as a note from the parent agent) answers no tool call.
+    if (step.source === 'SYSTEM') continue;
+    const answered = pendingTools.shift();
+    if (answered !== 'generate_image' || step.status !== 'DONE' || !Array.isArray(step.media)) continue;
+    for (const media of step.media) {
+      if (typeof media?.uri !== 'string' || !media.uri.startsWith('file:')) continue;
+      try {
+        paths.push(fileURLToPath(media.uri));
+      } catch {
+        // Not a local file URI; nothing to verify.
+      }
+    }
+  }
+  return paths;
+}
+
 export function verifyImageArtifacts(
   parsed,
   cwd,
   providerArtifactRoot = join(homedir(), '.gemini', 'antigravity-cli', 'brain'),
 ) {
   const imageTools = parsed.toolCalls.filter((tool) => tool.name === 'generate_image');
-  const completed = imageTools.filter((tool) => ['done', 'completed', 'complete', 'success', 'succeeded'].includes(tool.status));
-  if (completed.length === 0) {
-    return { artifacts: [], error: imageTools.length === 0 ? 'No generate_image tool call was observed.' : null };
+  const completed = imageTools.filter((tool) => COMPLETED_STATUS.includes(tool.status));
+  // Since agy 1.2.16 the main agent hands image work to the image-generator subagent.
+  const completedSubagents = new Set(parsed.completedSubagents ?? []);
+  const imageSubagents = (parsed.subagents ?? []).filter(
+    (sub) => sub.type_name === IMAGE_SUBAGENT && completedSubagents.has(sub.conversation_id),
+  );
+  if (completed.length === 0 && imageSubagents.length === 0) {
+    return {
+      artifacts: [],
+      error: imageTools.length === 0
+        ? 'No image generation was observed (neither a generate_image call nor the image-generator subagent).'
+        : null,
+    };
   }
 
   const canonicalCwd = realpathSync(cwd);
-  const candidates = new Set([
+  const subagentRoots = imageSubagents
+    .map((sub) => conversationDirectory(providerArtifactRoot, sub.conversation_id))
+    .filter((root) => root !== null);
+  const conversationRoots = [conversationDirectory(providerArtifactRoot, parsed.conversationId), ...subagentRoots]
+    .filter((root) => root !== null);
+  // A subagent-backed run is proved only by the media its transcript records; a
+  // path the parent merely mentions, such as the reference being edited, is not.
+  const reportedPaths = completed.length === 0 ? [] : [
     ...parsed.artifacts.flatMap((artifact) => typeof artifact === 'string' ? [artifact] : collectArtifactPaths(artifact)),
     ...completed.flatMap((tool) => collectArtifactPaths(tool.result)),
     ...imagePathsFromText(parsed.response),
+  ];
+  const candidates = new Set([
+    ...reportedPaths,
+    ...subagentRoots.flatMap((root) => generatedImagesFromTranscript(root)),
   ]);
   const artifacts = [];
-  const permittedRoots = [canonicalCwd];
-  if (parsed.conversationId) {
-    const conversationRoot = resolve(providerArtifactRoot, parsed.conversationId);
-    if (statOrNull(conversationRoot)?.isDirectory()) {
-      permittedRoots.push(realpathSync(conversationRoot));
-    }
-  }
+  const permittedRoots = [canonicalCwd, ...conversationRoots];
 
   for (const candidate of candidates) {
     const absolutePath = isAbsolute(candidate) ? candidate : resolve(cwd, candidate);
     const artifactStat = statOrNull(absolutePath);
     if (!artifactStat?.isFile() || artifactStat.size === 0) continue;
-    if (!['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(extname(absolutePath).toLowerCase())) continue;
+    if (!IMAGE_EXTENSIONS.includes(extname(absolutePath).toLowerCase())) continue;
     const canonicalArtifact = realpathSync(absolutePath);
     if (!permittedRoots.some((root) => pathIsWithin(canonicalArtifact, root))) continue;
     if (!artifacts.some((artifact) => artifact.path === canonicalArtifact)) {
@@ -1068,7 +1212,7 @@ export function verifyImageArtifacts(
 
   return {
     artifacts,
-    error: artifacts.length === 0 ? 'A completed generate_image tool call produced no valid image artifact.' : null,
+    error: artifacts.length === 0 ? 'Image generation completed but produced no valid image artifact.' : null,
   };
 }
 
@@ -1165,10 +1309,15 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
     if (parsed.conversationId) {
       writeSession(options.cwd, parsed.conversationId, stateDirectory);
     }
-    let outcome = classifyOutcome({ parsed, exitCode: execution.exitCode, stderr: execution.stderr });
+    let outcome = classifyOutcome({
+      parsed,
+      exitCode: execution.exitCode,
+      stderr: execution.stderr,
+      deadlineReached: execution.elapsedMs >= timeoutToMilliseconds(options.timeout),
+    });
 
     if (execution.timedOut) {
-      outcome = { ...outcome, status: 'error', warnings: [...outcome.warnings, `agy timed out after ${options.timeout}`] };
+      outcome = { ...outcome, status: 'error', warnings: [...outcome.warnings, `agy timed out and was stopped ${killGrace(options.timeout)}ms after the ${options.timeout} print timeout`] };
     }
     if (execution.overflowed) {
       outcome = { ...outcome, status: 'error', warnings: [...outcome.warnings, 'agy output exceeded the 16 MiB limit'] };

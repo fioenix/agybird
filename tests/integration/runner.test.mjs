@@ -36,6 +36,7 @@ function runRunner({
   projectsDir = fakeProjects,
   stateDir = fakeState,
   viaSymlink = false,
+  home,
 } = {}) {
   const entry = viaSymlink ? linkedRunnerPath : runnerPath;
   const args = [entry, '--category', category, '--cwd', cwd, '--mode', mode, '--timeout', timeout];
@@ -50,6 +51,7 @@ function runRunner({
         PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ''}`,
         AGYBIRD_PROJECTS_DIR: projectsDir,
         AGYBIRD_STATE_DIR: stateDir,
+        ...(home === undefined ? {} : { HOME: home, USERPROFILE: home }),
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -113,14 +115,24 @@ test('recovers from malformed provider output with a sanitized warning', async (
 
 test('terminates a delayed provider process at the requested timeout', async () => {
   const startedAt = Date.now();
-  const result = await runRunner({ prompt: 'CASE_DELAY', timeout: '50ms' });
+  const result = await runRunner({ prompt: 'CASE_HANG', timeout: '50ms' });
   const elapsed = Date.now() - startedAt;
   const envelope = parseSingleEnvelope(result.stdout);
 
   assert.equal(result.exitCode, 1);
   assert.equal(envelope.status, 'error');
-  assert.match(envelope.warnings.join('\n'), /timed out/i);
-  assert.ok(elapsed < 1_500, `timeout took ${elapsed}ms`);
+  // Even a tiny timeout leaves agy the minimum grace to deliver its partial answer.
+  assert.match(envelope.warnings.join('\n'), /timed out and was stopped 5000ms after the 50ms print timeout/);
+  assert.ok(elapsed < 8_000, `timeout took ${elapsed}ms`);
+});
+
+test('waits past the print timeout for the partial answer agy sends itself', async () => {
+  const result = await runRunner({ prompt: 'CASE_LATE_PARTIAL', timeout: '2s' });
+  const envelope = parseSingleEnvelope(result.stdout);
+
+  assert.equal(envelope.status, 'partial');
+  assert.equal(envelope.response, 'half an answer');
+  assert.doesNotMatch(envelope.warnings.join('\n'), /timed out/);
 });
 
 test('accepts image success only with completed tool event and real artifact', async () => {
@@ -134,6 +146,30 @@ test('accepts image success only with completed tool event and real artifact', a
   assert.equal(envelope.artifacts.length, 1);
   assert.equal(envelope.artifacts[0].path, realpathSync(join(result.cwd, 'generated.png')));
   assert.equal(envelope.artifacts[0].size, 8);
+});
+
+test('accepts an image the image-generator subagent saved in the brain directory', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'agybird-home-'));
+  const result = await runRunner({ category: 'image', mode: 'write', prompt: 'CASE_IMAGE_SUBAGENT', home });
+  const envelope = parseSingleEnvelope(result.stdout);
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(envelope.status, 'success');
+  assert.equal(envelope.subagents[0].type_name, 'image-generator');
+  assert.equal(envelope.artifacts.length, 1);
+  assert.equal(
+    envelope.artifacts[0].path,
+    realpathSync(join(home, '.gemini', 'antigravity-cli', 'brain', 'fake-conversation', 'bird_1.jpg')),
+  );
+});
+
+test('reports an expired print timeout as partial, not success', async () => {
+  const result = await runRunner({ prompt: 'CASE_PRINT_TIMEOUT' });
+  const envelope = parseSingleEnvelope(result.stdout);
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(envelope.status, 'partial');
+  assert.match(envelope.warnings.join('\n'), /print-timeout expired/);
 });
 
 test('downgrades completed image tool calls when their artifact is missing', async () => {
