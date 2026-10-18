@@ -102,7 +102,7 @@ export function validateRequest(options) {
   if (!['read', 'write'].includes(options.mode)) {
     throw new Error(`Invalid mode: ${options.mode}`);
   }
-  if (options.effort !== undefined && !['low', 'medium', 'high'].includes(options.effort)) {
+  if (options.effort !== undefined && !['low', 'medium', 'high', 'xhigh', 'max'].includes(options.effort)) {
     throw new Error(`Invalid effort: ${options.effort}`);
   }
   if (!isAbsolute(options.cwd)) {

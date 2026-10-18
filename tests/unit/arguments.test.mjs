@@ -64,7 +64,8 @@ test('accepts each category and effort value', () => {
   for (const category of ['code', 'image', 'general']) {
     assert.doesNotThrow(() => validateRequest(parseArgs(['--category', category, '--cwd', cwd])));
   }
-  for (const effort of ['low', 'medium', 'high']) {
+  // agy 1.2.11 added xhigh and max for models that support them.
+  for (const effort of ['low', 'medium', 'high', 'xhigh', 'max']) {
     assert.doesNotThrow(() => validateRequest(parseArgs([
       '--category', 'code', '--cwd', cwd, '--effort', effort,
     ])));
@@ -89,7 +90,7 @@ test('rejects unknown flags and invalid enum values', () => {
     /Invalid mode/,
   );
   assert.throws(
-    () => validateRequest(parseArgs(['--category', 'code', '--cwd', cwd, '--effort', 'max'])),
+    () => validateRequest(parseArgs(['--category', 'code', '--cwd', cwd, '--effort', 'extreme'])),
     /Invalid effort/,
   );
 });
