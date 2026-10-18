@@ -4,6 +4,8 @@ All notable changes to Agybird are documented in this file.
 
 ## Unreleased
 
+## 0.2.0 - 2026-10-18
+
 Verified against `agy` 1.4.2 with live headless runs on macOS: a read-only task, a denied command, an expired print timeout, and image generation.
 
 - An expired `--timeout` is reported as `partial`, from agy's stderr notice or from the run lasting the full timeout. Since `agy` 1.1.28 the CLI answers it with exit 0 and a `SUCCESS` result, which the runner used to report as `success` with an empty or cut-off response. The runner now waits a grace period of 5 to 10 seconds past `--print-timeout` before killing `agy`, so that partial answer arrives.
@@ -14,6 +16,11 @@ Verified against `agy` 1.4.2 with live headless runs on macOS: a read-only task,
 - `unsandboxed(...)` is no longer accepted by `--grant`; `agy` 1.2.2 deprecated it in favour of `command(...)`. When agy still asks for an `unsandboxed` grant, the runner suggests the matching `command(...)` rule.
 - A conversation id from the stream is used as a brain directory only when it is a plain directory name.
 - References updated for the `--json-schema` object-root requirement, the ask-first default for URL reads, plan-mode approval requests, and the retired default search tools.
+- Agybird installs as a Codex plugin: `codex plugin marketplace add fioenix/agybird`, then `codex plugin add agybird@agybird`. `.codex-plugin/plugin.json` points Codex at a thin adapter in `.plugin-skills/agybird/`, which loads the root `SKILL.md`, because Codex does not discover a `SKILL.md` at the plugin root. The Claude Code plugin keeps loading the root skill directly.
+- An icon and wordmark in light and dark variants: a bird rising toward a floating orb, drawn as monoline SVG on a 128-unit grid in the same style and colours as Vietnamizer and Markmap Skills, with a 512 px `assets/icon.png`. Both plugin manifests and the README header use them.
+- `PRIVACY.md` says what reaches Google through `agy` and what Agybird keeps under `~/.agybird/`; `TERMS.md` covers the MIT terms and Google's terms for Antigravity. Both plugin manifests link them along with the support URL.
+- Issue templates ask for `agy --version` and a redacted result envelope; a pull request template lists the checks a change needs.
+- The release workflow checks that the tag matches `package.json` and both plugin manifests.
 
 ## 0.1.1 - 2026-08-23
 
