@@ -688,6 +688,9 @@ const PERMISSION_DENIAL = /permission(?:s)? (?:denied|declined|required)|denied 
 // agy emits this when no allow-rule can authorize the tool, so only
 // --dangerously-skip-permissions would proceed. Agybird never offers that.
 const UNGRANTABLE_DENIAL = /Settings allow-rules do not apply/i;
+// agy 1.1.28+ ends an expired --print-timeout with exit 0 and a SUCCESS result;
+// only this stderr notice says the turn was cut short.
+const PRINT_TIMEOUT_EXPIRED = /print timeout after .* returning partial output/i;
 const FAILED_TOOL_STATUS = new Set(['error', 'failed', 'failure', 'denied', 'blocked', 'cancelled', 'canceled']);
 
 // Allow-rule kinds accepted by agy (verified through 1.1.19). The rule kind is
@@ -811,6 +814,10 @@ export function classifyOutcome({ parsed, exitCode, stderr }) {
     warnings.push(`agy exited with code ${exitCode}`);
     return { status: 'error', warnings };
   }
+  if (PRINT_TIMEOUT_EXPIRED.test(stderr)) {
+    warnings.push('agy --print-timeout expired before the turn finished; the response is incomplete.');
+    return { status: 'partial', warnings };
+  }
   if (!parsed.sawTerminalResult) {
     warnings.push('Antigravity stream ended without a terminal result event.');
     return { status: 'error', warnings };
@@ -861,6 +868,13 @@ export function makeEnvelope({
       ...(agyVersion === undefined ? {} : { agy_version: agyVersion }),
     },
   };
+}
+
+// agy 1.1.28+ answers an expired --print-timeout itself with the partial output,
+// so the hard kill waits a little longer to let that answer arrive.
+export function killDeadline(timeout) {
+  const milliseconds = timeoutToMilliseconds(timeout);
+  return milliseconds + Math.min(10_000, milliseconds);
 }
 
 export function timeoutToMilliseconds(timeout) {
@@ -995,7 +1009,7 @@ export async function runAgy(options, delegatedPrompt, env = process.env) {
     {
       cwd: options.cwd,
       env,
-      timeoutMs: timeoutToMilliseconds(options.timeout),
+      timeoutMs: killDeadline(options.timeout),
     },
   );
   return {

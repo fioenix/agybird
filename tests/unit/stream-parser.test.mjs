@@ -335,3 +335,18 @@ test('parses subagents and detailed usage metrics including thinking and cache t
     total_tokens: 160,
   });
 });
+
+// Since agy 1.1.28 an expired --print-timeout exits 0 with a SUCCESS result and
+// whatever partial response exists; only stderr says the turn did not finish.
+test('reports an expired print timeout as partial although agy exits zero', () => {
+  const parsed = parseFixture('agy-1.4.2-print-timeout.ndjson');
+  assert.equal(parsed.agyStatus, 'SUCCESS');
+
+  const outcome = classifyOutcome({
+    parsed,
+    exitCode: 0,
+    stderr: '[agy] print timeout after 8s with turn in progress; returning partial output\n',
+  });
+  assert.equal(outcome.status, 'partial');
+  assert.match(outcome.warnings.join('\n'), /print-timeout expired before the turn finished/);
+});

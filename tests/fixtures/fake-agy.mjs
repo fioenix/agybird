@@ -76,6 +76,10 @@ if (prompt.includes('CASE_DELAY')) {
     },
   });
   emit({ type: 'result', status: 'success', response: 'generated image' });
+} else if (prompt.includes('CASE_PRINT_TIMEOUT')) {
+  // agy 1.1.28+: an expired --print-timeout still exits 0 with a SUCCESS result.
+  process.stderr.write('[agy] print timeout after 8s with turn in progress; returning partial output\n');
+  emit({ event: 'result', result: { conversation_id: 'fake-conversation', status: 'SUCCESS', response: '' } });
 } else {
   emit({ type: 'result', status: 'success', response: 'ok', usage: { output_tokens: 1 } });
 }

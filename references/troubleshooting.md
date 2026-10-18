@@ -105,3 +105,5 @@ Report the quota result. Do not modify `useG1Credits` automatically. Ask for exp
 ## Stream or artifact validation fails
 
 Keep the status as `partial` or `error`, preserve the sanitized warning, and check `agy --version` against current official [headless documentation](https://antigravity.google/docs/cli/headless). Do not guess a new event schema from prose output. For images, inspect the `generate_image` tool event and verify the artifact inside the working directory or the exact matching `brain/<conversation_id>` artifact directory.
+
+A `partial` with a warning that `--print-timeout` expired means the turn was cut short; rerun with a longer `--timeout` in the same session.

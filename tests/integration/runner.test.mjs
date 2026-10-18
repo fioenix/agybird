@@ -136,6 +136,15 @@ test('accepts image success only with completed tool event and real artifact', a
   assert.equal(envelope.artifacts[0].size, 8);
 });
 
+test('reports an expired print timeout as partial, not success', async () => {
+  const result = await runRunner({ prompt: 'CASE_PRINT_TIMEOUT' });
+  const envelope = parseSingleEnvelope(result.stdout);
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(envelope.status, 'partial');
+  assert.match(envelope.warnings.join('\n'), /print-timeout expired/);
+});
+
 test('downgrades completed image tool calls when their artifact is missing', async () => {
   const result = await runRunner({ category: 'image', mode: 'write', prompt: 'CASE_IMAGE_MISSING' });
   const envelope = parseSingleEnvelope(result.stdout);
