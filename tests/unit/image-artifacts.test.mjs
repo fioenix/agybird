@@ -188,3 +188,19 @@ test('ignores a conversation id that would leave the brain directory', () => {
 
   assert.equal(verified.artifacts.length, 0);
 });
+
+// A path the parent agent merely mentions, such as the reference being edited, is
+// not proof of generation when the subagent's transcript records no result.
+test('accepts only transcript media for a subagent-backed run', () => {
+  const parsed = parseImageFixture();
+  const { cwd, brain } = brainWorkspace();
+  const reference = join(cwd, 'reference.png');
+  writeFileSync(reference, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  parsed.response = `Edited ${reference} as requested.`;
+  parsed.artifacts = [reference];
+
+  const verified = verifyImageArtifacts(parsed, cwd, brain);
+
+  assert.equal(verified.artifacts.length, 0);
+  assert.match(verified.error, /no valid image artifact/i);
+});
