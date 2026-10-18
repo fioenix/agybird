@@ -78,7 +78,8 @@ Allow-rule syntax, verified against `agy` 1.1.9 through 1.1.19. The rule names t
 | `write_file(/path/to/file)` | Writing that path. |
 | `mcp(server/tool)` | One MCP tool. |
 | `read_url(example.com)` / `execute_url(127.0.0.1)` | Network reads and local URL execution. |
-| `unsandboxed(/path/to/binary)` | Running that binary outside the sandbox. |
+
+`agy` 1.2.2 deprecated `unsandboxed(...)` rules and warns about them at startup; authorize the command with `command(...)` instead. The runner no longer accepts `unsandboxed` in `--grant`. A denial message can still read `permission check failed for unsandboxed "..."`; the rule it needs is the `command(...)` one the runner suggests.
 
 Targets are matched as regular expressions, so literal `.` must be escaped: `command(launchctl unload ~/Library/LaunchAgents/ing\.paperclip\.server\.plist)`.
 

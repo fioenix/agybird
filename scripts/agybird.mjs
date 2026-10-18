@@ -152,7 +152,8 @@ export function validateRequest(options) {
 }
 
 const PROJECTS_DIRECTORY = join(homedir(), '.gemini', 'config', 'projects');
-const RULE_KINDS = new Set(['command', 'read_file', 'write_file', 'mcp', 'read_url', 'execute_url', 'unsandboxed']);
+// agy 1.2.2 deprecated `unsandboxed(...)` rules in favour of `command(...)`.
+const RULE_KINDS = new Set(['command', 'read_file', 'write_file', 'mcp', 'read_url', 'execute_url']);
 const RULE_PATTERN = /^([a-z_]+)\(([\s\S]+)\)$/;
 const RULE_METACHARACTERS = new Set(['.', '*', '+', '?', '^', '$', '{', '}', '(', ')', '|', '[', ']']);
 

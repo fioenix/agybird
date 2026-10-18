@@ -31,6 +31,10 @@ test('rejects malformed and unknown allow-rules', () => {
   assert.throws(() => parseGrantRule('shell(rm -rf)'), /Unsupported allow-rule kind/);
 });
 
+test('rejects the unsandboxed kind that agy 1.2.2 deprecated in favour of command', () => {
+  assert.throws(() => parseGrantRule('unsandboxed(/usr/bin/sips)'), /Unsupported allow-rule kind/);
+});
+
 test('rejects every spelling of a wildcard target, not just the obvious ones', () => {
   for (const rule of [
     'command(*)',
