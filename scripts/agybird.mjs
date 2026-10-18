@@ -587,6 +587,20 @@ function normalizeSubagentInfo(event) {
   return results;
 }
 
+// agy 1.1.27+ lists the actions a headless run refused as `denied_actions` on
+// the terminal result. They name the action kind but not its target.
+function normalizeDeniedActions(entries) {
+  const actions = [];
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object' || typeof entry.action !== 'string' || !entry.action.trim()) continue;
+    actions.push({
+      action: truncateField(entry.action),
+      display_name: truncateField(typeof entry.display_name === 'string' && entry.display_name.trim() ? entry.display_name : entry.action),
+    });
+  }
+  return actions;
+}
+
 export function createStreamParser() {
   let buffer = '';
   let lineNumber = 0;
@@ -599,6 +613,7 @@ export function createStreamParser() {
     artifacts: [],
     warnings: [],
     usage: null,
+    deniedActions: [],
     sawTerminalResult: false,
     agyStatus: null,
   };
@@ -657,6 +672,9 @@ export function createStreamParser() {
         state.response,
       );
       state.usage = firstDefined(terminal.usage, terminal.stats, state.usage);
+      if (Array.isArray(terminal.denied_actions)) {
+        state.deniedActions = normalizeDeniedActions(terminal.denied_actions);
+      }
       const eventArtifacts = firstDefined(terminal.artifacts, terminal.files);
       if (Array.isArray(eventArtifacts)) state.artifacts.push(...eventArtifacts);
     }
@@ -767,6 +785,7 @@ function suggestedRule(kind, target) {
 // cannot phrase itself as an instruction to the approving agent.
 export function describePermissionRequests(parsed, stderr = '') {
   const requests = [];
+  const describedKinds = new Set();
   for (const tool of parsed.toolCalls) {
     const reason = typeof tool.error === 'string' ? tool.error : null;
     if (!reason || !PERMISSION_DENIAL.test(reason)) continue;
@@ -774,6 +793,7 @@ export function describePermissionRequests(parsed, stderr = '') {
     const target = asked?.target ?? permissionTarget(tool);
     const kind = asked?.kind ?? RULE_KIND_BY_TOOL.get(tool.name) ?? null;
     const display = target === null ? null : truncateField(target);
+    if (kind !== null) describedKinds.add(kind);
     requests.push({
       tool: tool.name,
       target: display,
@@ -789,6 +809,21 @@ export function describePermissionRequests(parsed, stderr = '') {
       reason: truncateField(reason),
     });
   }
+  // A denied action with no tool event behind it has no target, so the user can
+  // be told what was refused but no rule can be offered for it.
+  for (const denied of parsed.deniedActions ?? []) {
+    if (describedKinds.has(denied.action)) continue;
+    describedKinds.add(denied.action);
+    requests.push({
+      tool: denied.display_name,
+      target: null,
+      target_truncated: false,
+      suggested_rule: null,
+      grantable: false,
+      settings_path: GLOBAL_SETTINGS_PATH,
+      reason: `Antigravity reported a denied ${denied.action} action without its target.`,
+    });
+  }
   return requests;
 }
 
@@ -800,14 +835,14 @@ export function classifyOutcome({ parsed, exitCode, stderr }) {
     ...toolErrors.flatMap((tool) => [tool.status, tool.error]).filter(Boolean),
   ].join('\n');
 
-  if (PERMISSION_DENIAL.test(permissionText)) {
+  if (PERMISSION_DENIAL.test(permissionText) || (parsed.deniedActions ?? []).length > 0) {
     const permissionRequests = describePermissionRequests(parsed, stderr);
     const grantable = permissionRequests.filter((request) => request.grantable);
     for (const request of grantable) {
       warnings.push(`Antigravity denied \`${request.tool}\` on ${JSON.stringify(request.target)}; allow-rule \`${request.suggested_rule}\` under permissions.allow in ${request.settings_path} would authorize it.`);
     }
     if (grantable.length === 0) {
-      warnings.push('Antigravity permission policy blocked at least one requested action and no allow-rule can authorize it.');
+      warnings.push('Antigravity permission policy blocked at least one requested action and no allow-rule can be suggested for it.');
       return { status: 'blocked', warnings, permissionRequests };
     }
     return { status: 'needs_permission', warnings, permissionRequests };

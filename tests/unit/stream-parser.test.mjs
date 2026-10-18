@@ -336,6 +336,18 @@ test('parses subagents and detailed usage metrics including thinking and cache t
   });
 });
 
+test('parses a read-only run captured from agy 1.4.2', () => {
+  const parsed = parseFixture('agy-1.4.2.ndjson');
+
+  assert.equal(parsed.conversationId, '485dcee1-1118-438f-b42c-a39ece3127d2');
+  assert.equal(parsed.response, 'hello from probe\n');
+  assert.equal(parsed.agyStatus, 'SUCCESS');
+  assert.equal(parsed.usage.thinking_tokens, 0);
+  assert.equal(parsed.usage.cache_read_tokens, 37000);
+  assert.deepEqual(parsed.deniedActions, []);
+  assert.equal(classifyOutcome({ parsed, exitCode: 0, stderr: '' }).status, 'success');
+});
+
 // Since agy 1.1.28 an expired --print-timeout exits 0 with a SUCCESS result and
 // whatever partial response exists; only stderr says the turn did not finish.
 test('reports an expired print timeout as partial although agy exits zero', () => {
@@ -349,6 +361,58 @@ test('reports an expired print timeout as partial although agy exits zero', () =
   });
   assert.equal(outcome.status, 'partial');
   assert.match(outcome.warnings.join('\n'), /print-timeout expired before the turn finished/);
+});
+
+test('reads denied_actions from the terminal result without duplicating a described denial', () => {
+  const parsed = parseFixture('agy-1.4.2-image-subagent.ndjson');
+  assert.deepEqual(parsed.deniedActions, [{ action: 'command', display_name: 'RunCommand' }]);
+
+  const outcome = classifyOutcome({ parsed, exitCode: 0, stderr: '' });
+  assert.equal(outcome.status, 'needs_permission');
+  assert.equal(outcome.permissionRequests.length, 1, 'the denied command is already described by its tool event');
+  assert.equal(outcome.permissionRequests[0].tool, 'run_command');
+  assert.match(outcome.permissionRequests[0].suggested_rule, /^command\(sips /);
+});
+
+// agy 1.1.27 reports refused actions in denied_actions; a run can end with no
+// tool error text at all, and must still not be reported as success.
+test('treats denied_actions alone as a permission outcome with no rule to suggest', () => {
+  const parser = createStreamParser();
+  parser.push(`${JSON.stringify({
+    event: 'result',
+    result: {
+      conversation_id: 'conv-denied-only',
+      status: 'SUCCESS',
+      response: 'Skipped the command.',
+      denied_actions: [{ action: 'read_url', display_name: 'ReadUrlContent' }],
+    },
+  })}\n`);
+  const outcome = classifyOutcome({ parsed: parser.finish(), exitCode: 0, stderr: '' });
+
+  assert.equal(outcome.status, 'blocked');
+  assert.equal(outcome.permissionRequests.length, 1);
+  assert.equal(outcome.permissionRequests[0].tool, 'ReadUrlContent');
+  assert.equal(outcome.permissionRequests[0].target, null);
+  assert.equal(outcome.permissionRequests[0].suggested_rule, null);
+  assert.equal(outcome.permissionRequests[0].grantable, false);
+  assert.match(outcome.warnings.join('\n'), /no allow-rule can be suggested/);
+});
+
+test('ignores malformed denied_actions entries and cuts their fields', () => {
+  const parser = createStreamParser();
+  parser.push(`${JSON.stringify({
+    event: 'result',
+    result: {
+      status: 'SUCCESS',
+      response: '',
+      denied_actions: [null, 'command', { action: 'command', display_name: `Run\n${'x'.repeat(400)}` }],
+    },
+  })}\n`);
+  const parsed = parser.finish();
+
+  assert.equal(parsed.deniedActions.length, 1);
+  assert.ok(parsed.deniedActions[0].display_name.length <= 300);
+  assert.doesNotMatch(parsed.deniedActions[0].display_name, /\n/);
 });
 
 // agy 1.2.6 exits 3 when the agent or model API fails mid-turn.
