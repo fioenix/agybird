@@ -15,7 +15,7 @@ Pass each source with a repeated absolute `--reference` argument. Agybird asks f
 Accept success only when all of these are true:
 
 1. Image generation is observed: a completed `generate_image` call in `tool_calls`, or a completed `invoke_subagent` call with an `image-generator` entry in `subagents[]`.
-2. At least one artifact is an existing, nonempty supported raster file inside the working directory, or inside Antigravity's `brain/<conversation_id>` directory for this run's conversation or its `image-generator` subagent. The subagent reports no path, so the runner also accepts images saved directly in those directories after the run started; an image left by an earlier turn does not count.
+2. At least one artifact is an existing, nonempty supported raster file inside the working directory, or inside Antigravity's `brain/<conversation_id>` directory for this run's conversation or its `image-generator` subagent. The stream reports no path for the subagent's output, so the runner reads the subagent's own transcript (`brain/<subagent_id>/.system_generated/logs/transcript.jsonl`) and accepts only the images it records as `generate_image` results. A screenshot, a viewed image, or an image from an earlier turn in the same directory does not count.
 3. Open every resulting image and inspect it visually against the request.
 
 The image usually stays in `brain/<conversation_id>/`, often as a JPEG with a generated name. Agybird tells Antigravity not to copy, convert, or resize it with shell commands, because a headless run cannot approve that command and it ends as a denied action. When the user wants the image at a particular path or format, copy or convert the reported artifact yourself after verifying it.

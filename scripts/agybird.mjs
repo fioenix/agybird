@@ -19,7 +19,7 @@ import {
 } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, delimiter, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const VALUE_OPTIONS = new Map([
   ['--category', 'category'],
@@ -611,6 +611,7 @@ export function createStreamParser() {
     structuredOutput: null,
     toolCalls: new Map(),
     subagents: new Map(),
+    completedSubagents: new Set(),
     artifacts: [],
     warnings: [],
     usage: null,
@@ -652,9 +653,11 @@ export function createStreamParser() {
     if (toolUpdate) mergeToolCall(state.toolCalls, toolUpdate);
 
     const subagents = normalizeSubagentInfo(event);
+    const subagentStepDone = COMPLETED_STATUS.includes(toolUpdate?.status);
     for (const sub of subagents) {
       const key = sub.conversation_id ?? `${sub.type_name}-${state.subagents.size}`;
       state.subagents.set(key, sub);
+      if (subagentStepDone && sub.conversation_id) state.completedSubagents.add(sub.conversation_id);
     }
 
     if (eventName === 'result') {
@@ -698,6 +701,7 @@ export function createStreamParser() {
         ...state,
         toolCalls: [...state.toolCalls.values()],
         subagents: [...state.subagents.values()],
+        completedSubagents: [...state.completedSubagents],
       };
     },
   };
@@ -1109,36 +1113,59 @@ function conversationDirectory(providerArtifactRoot, conversationId) {
   return realpathSync(directory);
 }
 
-// Images saved directly in a conversation directory since the run started. The
-// image-generator subagent reports no path, so this is the only way to find them;
-// the time bound keeps an image from an earlier turn from passing as this one's.
-function recentImages(directory, since) {
-  let entries;
-  try {
-    entries = readdirSync(directory, { withFileTypes: true });
-  } catch {
-    return [];
+const MAX_TRANSCRIPT_BYTES = 16 * 1024 * 1024;
+
+// The images an image-generator subagent produced, read from the transcript agy
+// keeps for it. The stream reports no path, and a directory listing cannot tell a
+// generated image from a screenshot or an earlier turn's output; the transcript
+// attaches each generate_image result's media to the step that answered the call.
+function generatedImagesFromTranscript(subagentDirectory) {
+  const transcriptPath = join(subagentDirectory, '.system_generated', 'logs', 'transcript.jsonl');
+  const transcriptStat = statOrNull(transcriptPath);
+  if (!transcriptStat?.isFile() || transcriptStat.size > MAX_TRANSCRIPT_BYTES) return [];
+  const paths = [];
+  let pendingTools = [];
+  for (const line of readFileSync(transcriptPath, 'utf8').split('\n')) {
+    let step;
+    try {
+      step = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!step || typeof step !== 'object') continue;
+    if (step.type === 'PLANNER_RESPONSE') {
+      pendingTools = Array.isArray(step.tool_calls) ? step.tool_calls.map((call) => call?.name) : [];
+      continue;
+    }
+    // A system message (such as a note from the parent agent) answers no tool call.
+    if (step.source === 'SYSTEM') continue;
+    const answered = pendingTools.shift();
+    if (answered !== 'generate_image' || step.status !== 'DONE' || !Array.isArray(step.media)) continue;
+    for (const media of step.media) {
+      if (typeof media?.uri !== 'string' || !media.uri.startsWith('file:')) continue;
+      try {
+        paths.push(fileURLToPath(media.uri));
+      } catch {
+        // Not a local file URI; nothing to verify.
+      }
+    }
   }
-  return entries
-    .filter((entry) => entry.isFile() && IMAGE_EXTENSIONS.includes(extname(entry.name).toLowerCase()))
-    .map((entry) => join(directory, entry.name))
-    .filter((path) => (statOrNull(path)?.mtimeMs ?? 0) >= since);
+  return paths;
 }
 
 export function verifyImageArtifacts(
   parsed,
   cwd,
   providerArtifactRoot = join(homedir(), '.gemini', 'antigravity-cli', 'brain'),
-  { since = null } = {},
 ) {
   const imageTools = parsed.toolCalls.filter((tool) => tool.name === 'generate_image');
   const completed = imageTools.filter((tool) => COMPLETED_STATUS.includes(tool.status));
   // Since agy 1.2.16 the main agent hands image work to the image-generator subagent.
-  const imageSubagents = (parsed.subagents ?? []).filter((sub) => sub.type_name === IMAGE_SUBAGENT);
-  const subagentRan = imageSubagents.length > 0 && parsed.toolCalls.some(
-    (tool) => tool.name === 'invoke_subagent' && COMPLETED_STATUS.includes(tool.status),
+  const completedSubagents = new Set(parsed.completedSubagents ?? []);
+  const imageSubagents = (parsed.subagents ?? []).filter(
+    (sub) => sub.type_name === IMAGE_SUBAGENT && completedSubagents.has(sub.conversation_id),
   );
-  if (completed.length === 0 && !subagentRan) {
+  if (completed.length === 0 && imageSubagents.length === 0) {
     return {
       artifacts: [],
       error: imageTools.length === 0
@@ -1148,15 +1175,16 @@ export function verifyImageArtifacts(
   }
 
   const canonicalCwd = realpathSync(cwd);
-  const conversationRoots = [
-    conversationDirectory(providerArtifactRoot, parsed.conversationId),
-    ...imageSubagents.map((sub) => conversationDirectory(providerArtifactRoot, sub.conversation_id)),
-  ].filter((root) => root !== null);
+  const subagentRoots = imageSubagents
+    .map((sub) => conversationDirectory(providerArtifactRoot, sub.conversation_id))
+    .filter((root) => root !== null);
+  const conversationRoots = [conversationDirectory(providerArtifactRoot, parsed.conversationId), ...subagentRoots]
+    .filter((root) => root !== null);
   const candidates = new Set([
     ...parsed.artifacts.flatMap((artifact) => typeof artifact === 'string' ? [artifact] : collectArtifactPaths(artifact)),
     ...completed.flatMap((tool) => collectArtifactPaths(tool.result)),
     ...imagePathsFromText(parsed.response),
-    ...(subagentRan && since !== null ? conversationRoots.flatMap((root) => recentImages(root, since)) : []),
+    ...subagentRoots.flatMap((root) => generatedImagesFromTranscript(root)),
   ]);
   const artifacts = [];
   const permittedRoots = [canonicalCwd, ...conversationRoots];
@@ -1265,7 +1293,6 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
       process.once('SIGINT', onSignal);
       process.once('SIGTERM', onSignal);
     }
-    const startedAt = Date.now();
     const execution = await runAgy(options, delegatedPrompt, env);
     const parser = createStreamParser();
     parser.push(execution.stdout);
@@ -1289,8 +1316,7 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
 
     let artifacts = parsed.artifacts;
     if (options.category === 'image') {
-      // A filesystem mtime can trail the wall clock by its own resolution.
-      const verified = verifyImageArtifacts(parsed, options.cwd, undefined, { since: startedAt - 2_000 });
+      const verified = verifyImageArtifacts(parsed, options.cwd);
       artifacts = verified.artifacts;
       if (verified.error && outcome.status === 'success') {
         outcome = { ...outcome, status: 'error', warnings: [...outcome.warnings, verified.error] };

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { basename, dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 
 import { createStreamParser, verifyImageArtifacts } from '../../scripts/agybird.mjs';
@@ -59,62 +59,111 @@ function parseImageFixture() {
   return parser.finish();
 }
 
-function brainWithImage(conversationId, name, mtime) {
+function brainWorkspace() {
   const root = mkdtempSync(join(tmpdir(), 'agybird-brain-subagent-'));
   const cwd = join(root, 'workspace');
   const brain = join(root, 'brain');
-  const imagePath = join(brain, conversationId, name);
   mkdirSync(cwd);
-  mkdirSync(join(brain, conversationId, '.system_generated'), { recursive: true });
-  writeFileSync(imagePath, Buffer.from([0xff, 0xd8, 0xff]));
-  if (mtime !== undefined) utimesSync(imagePath, mtime, mtime);
-  return { cwd, brain, imagePath };
+  mkdirSync(brain);
+  return { cwd, brain };
 }
 
-// agy 1.2.16 moved image work to the `image-generator` subagent. Its image lands in
-// the conversation's brain directory and its path is reported nowhere in the stream.
-test('accepts an image the image-generator subagent saved during this run', () => {
-  const parsed = parseImageFixture();
-  const { cwd, brain, imagePath } = brainWithImage(parsed.conversationId, 'red_disc_1792336600370.jpg');
+function writeImage(brain, conversationId, name) {
+  const imagePath = join(brain, conversationId, name);
+  mkdirSync(join(brain, conversationId), { recursive: true });
+  writeFileSync(imagePath, Buffer.from([0xff, 0xd8, 0xff]));
+  return imagePath;
+}
 
-  const verified = verifyImageArtifacts(parsed, cwd, brain, { since: Date.now() - 60_000 });
+// Shaped like the transcript agy 1.4.2 keeps for an image-generator subagent: a
+// planner step that calls a tool, then a step holding that call's result.
+function writeTranscript(brain, subagentConversation, calls) {
+  const logs = join(brain, subagentConversation, '.system_generated', 'logs');
+  mkdirSync(logs, { recursive: true });
+  const steps = [];
+  for (const { tool, media, status = 'DONE' } of calls) {
+    steps.push({ step_index: steps.length, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', tool_calls: [{ name: tool, args: {} }] });
+    steps.push({
+      step_index: steps.length,
+      source: 'MODEL',
+      type: 'GENERIC',
+      status,
+      ...(media ? { media: media.map((path) => ({ mime_type: 'image/jpeg', uri: pathToFileURL(path).href })) } : {}),
+    });
+  }
+  writeFileSync(join(logs, 'transcript.jsonl'), `${steps.map((step) => JSON.stringify(step)).join('\n')}\n`);
+}
+
+// agy 1.2.16 moved image work to the `image-generator` subagent. The stream reports
+// no image path; the subagent's transcript records each generate_image result.
+test('accepts the image the image-generator transcript records', () => {
+  const parsed = parseImageFixture();
+  const { cwd, brain } = brainWorkspace();
+  const imagePath = writeImage(brain, parsed.conversationId, 'red_disc_1792336600370.jpg');
+  writeTranscript(brain, parsed.subagents[0].conversation_id, [
+    { tool: 'generate_image', status: 'ERROR' },
+    { tool: 'generate_image', media: [imagePath] },
+  ]);
+
+  const verified = verifyImageArtifacts(parsed, cwd, brain);
 
   assert.equal(verified.error, null);
   assert.deepEqual(verified.artifacts, [{ path: realpathSync(imagePath), size: 3 }]);
 });
 
-test('also looks in the image-generator subagent conversation directory', () => {
+test('ignores brain images the transcript does not record as generated', () => {
   const parsed = parseImageFixture();
-  const subagentConversation = parsed.subagents[0].conversation_id;
-  const { cwd, brain, imagePath } = brainWithImage(subagentConversation, 'red_circle.png');
+  const { cwd, brain } = brainWorkspace();
+  const generated = writeImage(brain, parsed.conversationId, 'red_disc_1.jpg');
+  writeImage(brain, parsed.conversationId, 'screenshot.png');
+  writeImage(brain, parsed.conversationId, 'from_an_earlier_turn.jpg');
+  writeTranscript(brain, parsed.subagents[0].conversation_id, [{ tool: 'generate_image', media: [generated] }]);
 
-  const verified = verifyImageArtifacts(parsed, cwd, brain, { since: Date.now() - 60_000 });
+  const verified = verifyImageArtifacts(parsed, cwd, brain);
 
-  assert.deepEqual(verified.artifacts, [{ path: realpathSync(imagePath), size: 3 }]);
+  assert.deepEqual(verified.artifacts.map((artifact) => basename(artifact.path)), ['red_disc_1.jpg']);
 });
 
-test('does not count an image left in the brain directory by an earlier turn', () => {
+test('ignores media attached to results of tools other than generate_image', () => {
   const parsed = parseImageFixture();
-  const old = new Date(Date.now() - 3_600_000);
-  const { cwd, brain } = brainWithImage(parsed.conversationId, 'earlier.jpg', old);
+  const { cwd, brain } = brainWorkspace();
+  const viewed = writeImage(brain, parsed.conversationId, 'viewed.png');
+  writeTranscript(brain, parsed.subagents[0].conversation_id, [{ tool: 'view_file', media: [viewed] }]);
 
-  const verified = verifyImageArtifacts(parsed, cwd, brain, { since: Date.now() - 60_000 });
+  const verified = verifyImageArtifacts(parsed, cwd, brain);
 
   assert.equal(verified.artifacts.length, 0);
   assert.match(verified.error, /no valid image artifact/i);
 });
 
-test('requires evidence of image generation before scanning for artifacts', () => {
-  const { cwd, brain } = brainWithImage('conversation-plain', 'stray.png');
+test('rejects recorded media outside the conversation directories', () => {
+  const parsed = parseImageFixture();
+  const { cwd, brain } = brainWorkspace();
+  const elsewhere = writeImage(brain, 'some-other-conversation', 'private.jpg');
+  writeTranscript(brain, parsed.subagents[0].conversation_id, [{ tool: 'generate_image', media: [elsewhere] }]);
+
+  const verified = verifyImageArtifacts(parsed, cwd, brain);
+
+  assert.equal(verified.artifacts.length, 0);
+});
+
+test('requires the image-generator subagent itself to have finished', () => {
+  const { cwd, brain } = brainWorkspace();
+  const imagePath = writeImage(brain, 'conversation-main', 'bird.jpg');
+  writeTranscript(brain, 'sub-image', [{ tool: 'generate_image', media: [imagePath] }]);
   const parsed = {
-    conversationId: 'conversation-plain',
+    conversationId: 'conversation-main',
     response: 'done',
     artifacts: [],
-    toolCalls: [{ id: '1', name: 'invoke_subagent', status: 'done' }],
-    subagents: [{ type_name: 'research', conversation_id: 'sub-1' }],
+    toolCalls: [{ id: '3', name: 'invoke_subagent', status: 'done' }],
+    subagents: [
+      { type_name: 'image-generator', conversation_id: 'sub-image' },
+      { type_name: 'research', conversation_id: 'sub-research' },
+    ],
+    completedSubagents: ['sub-research'],
   };
 
-  const verified = verifyImageArtifacts(parsed, cwd, brain, { since: 0 });
+  const verified = verifyImageArtifacts(parsed, cwd, brain);
 
   assert.equal(verified.artifacts.length, 0);
   assert.match(verified.error, /No image generation was observed/);
@@ -135,7 +184,7 @@ test('ignores a conversation id that would leave the brain directory', () => {
     toolCalls: [{ id: '3', name: 'generate_image', status: 'done' }],
   };
 
-  const verified = verifyImageArtifacts(parsed, cwd, brain, { since: 0 });
+  const verified = verifyImageArtifacts(parsed, cwd, brain);
 
   assert.equal(verified.artifacts.length, 0);
 });

@@ -3,6 +3,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 if (process.argv.includes('--version')) {
   process.stdout.write('agy 0.0.0-fake\n');
@@ -93,7 +94,16 @@ if (prompt.includes('CASE_DELAY')) {
   // agy 1.2.16+: the image-generator subagent saves into the conversation's brain directory.
   const conversationRoot = join(homedir(), '.gemini', 'antigravity-cli', 'brain', 'fake-conversation');
   mkdirSync(conversationRoot, { recursive: true });
-  writeFileSync(join(conversationRoot, 'bird_1.jpg'), Buffer.from([0xff, 0xd8, 0xff, 0xe0]));
+  const imagePath = join(conversationRoot, 'bird_1.jpg');
+  writeFileSync(imagePath, Buffer.from([0xff, 0xd8, 0xff, 0xe0]));
+  // A stray image the subagent did not generate must not be reported.
+  writeFileSync(join(conversationRoot, 'screenshot.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  const logs = join(homedir(), '.gemini', 'antigravity-cli', 'brain', 'fake-subagent', '.system_generated', 'logs');
+  mkdirSync(logs, { recursive: true });
+  writeFileSync(join(logs, 'transcript.jsonl'), [
+    { step_index: 0, type: 'PLANNER_RESPONSE', status: 'DONE', tool_calls: [{ name: 'generate_image', args: {} }] },
+    { step_index: 1, type: 'GENERIC', status: 'DONE', media: [{ mime_type: 'image/jpeg', uri: pathToFileURL(imagePath).href }] },
+  ].map((step) => JSON.stringify(step)).join('\n'));
   emit({
     event: 'step_update',
     step_update: {

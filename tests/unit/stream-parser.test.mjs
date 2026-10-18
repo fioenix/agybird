@@ -498,3 +498,33 @@ test('reports a run that reached its print timeout as partial without the stderr
   assert.equal(outcome.status, 'partial');
   assert.match(outcome.warnings.join('\n'), /print-timeout expired before the turn finished/);
 });
+
+test('records which subagents finished, apart from the ones only started', () => {
+  const parser = createStreamParser();
+  parser.push([
+    JSON.stringify({
+      event: 'step_update',
+      step_update: {
+        step_index: 2,
+        state: 'ACTIVE',
+        step_type: 'subagent',
+        tool_name: 'invoke_subagent',
+        subagent_info: { subagents: [{ type_name: 'image-generator', conversation_id: 'sub-image' }] },
+      },
+    }),
+    JSON.stringify({
+      event: 'step_update',
+      step_update: {
+        step_index: 3,
+        state: 'DONE',
+        step_type: 'subagent',
+        tool_name: 'invoke_subagent',
+        subagent_info: { subagents: [{ type_name: 'research', conversation_id: 'sub-research' }] },
+      },
+    }),
+    '',
+  ].join('\n'));
+  const parsed = parser.finish();
+
+  assert.deepEqual(parsed.completedSubagents, ['sub-research']);
+});
