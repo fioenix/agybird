@@ -115,14 +115,15 @@ test('recovers from malformed provider output with a sanitized warning', async (
 
 test('terminates a delayed provider process at the requested timeout', async () => {
   const startedAt = Date.now();
-  const result = await runRunner({ prompt: 'CASE_DELAY', timeout: '50ms' });
+  const result = await runRunner({ prompt: 'CASE_HANG', timeout: '50ms' });
   const elapsed = Date.now() - startedAt;
   const envelope = parseSingleEnvelope(result.stdout);
 
   assert.equal(result.exitCode, 1);
   assert.equal(envelope.status, 'error');
-  assert.match(envelope.warnings.join('\n'), /timed out and was stopped 50ms after the 50ms print timeout/);
-  assert.ok(elapsed < 1_500, `timeout took ${elapsed}ms`);
+  // Even a tiny timeout leaves agy the minimum grace to deliver its partial answer.
+  assert.match(envelope.warnings.join('\n'), /timed out and was stopped 5000ms after the 50ms print timeout/);
+  assert.ok(elapsed < 8_000, `timeout took ${elapsed}ms`);
 });
 
 test('waits past the print timeout for the partial answer agy sends itself', async () => {

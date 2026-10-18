@@ -926,8 +926,10 @@ export function makeEnvelope({
 
 // agy 1.1.28+ answers an expired --print-timeout itself with the partial output,
 // so the hard kill waits a little longer to let that answer arrive.
+// The kill timer starts at spawn, before agy's own timer, so the grace never
+// drops below a fixed minimum however short the timeout.
 export function killGrace(timeout) {
-  return Math.min(10_000, timeoutToMilliseconds(timeout));
+  return Math.max(5_000, Math.min(10_000, timeoutToMilliseconds(timeout)));
 }
 
 export function killDeadline(timeout) {
@@ -1182,10 +1184,15 @@ export function verifyImageArtifacts(
     .filter((root) => root !== null);
   const conversationRoots = [conversationDirectory(providerArtifactRoot, parsed.conversationId), ...subagentRoots]
     .filter((root) => root !== null);
-  const candidates = new Set([
+  // A subagent-backed run is proved only by the media its transcript records; a
+  // path the parent merely mentions, such as the reference being edited, is not.
+  const reportedPaths = completed.length === 0 ? [] : [
     ...parsed.artifacts.flatMap((artifact) => typeof artifact === 'string' ? [artifact] : collectArtifactPaths(artifact)),
     ...completed.flatMap((tool) => collectArtifactPaths(tool.result)),
     ...imagePathsFromText(parsed.response),
+  ];
+  const candidates = new Set([
+    ...reportedPaths,
     ...subagentRoots.flatMap((root) => generatedImagesFromTranscript(root)),
   ]);
   const artifacts = [];

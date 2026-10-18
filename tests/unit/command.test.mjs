@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildAgyArgs } from '../../scripts/agybird.mjs';
+import { buildAgyArgs, killDeadline, killGrace } from '../../scripts/agybird.mjs';
 
 test('builds the minimal official headless invocation', () => {
   assert.deepEqual(
@@ -51,4 +51,13 @@ test('does not emit implicit provider, sandbox, credit, or permission choices', 
   assert.doesNotMatch(serialized, /--sandbox/);
   assert.doesNotMatch(serialized, /useG1Credits/);
   assert.doesNotMatch(serialized, /dangerously-skip-permissions/);
+});
+
+// The kill timer starts at spawn, before agy's own print-timeout timer, so a short
+// timeout still needs a fixed minimum grace for agy to start and answer.
+test('keeps a minimum kill grace and caps it for long timeouts', () => {
+  assert.equal(killGrace('50ms'), 5_000);
+  assert.equal(killGrace('8s'), 8_000);
+  assert.equal(killGrace('10m'), 10_000);
+  assert.equal(killDeadline('50ms'), 5_050);
 });

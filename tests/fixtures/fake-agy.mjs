@@ -19,7 +19,12 @@ function emit(event) {
 
 emit({ type: 'init', conversation_id: 'fake-conversation' });
 
-if (prompt.includes('CASE_DELAY')) {
+if (prompt.includes('CASE_HANG')) {
+  // Ignores --print-timeout entirely, so only the runner's own kill ends it.
+  setTimeout(() => {
+    emit({ type: 'result', status: 'success', response: 'never seen' });
+  }, 30_000);
+} else if (prompt.includes('CASE_DELAY')) {
   setTimeout(() => {
     emit({ type: 'result', status: 'success', response: 'too late' });
   }, 2_000);
