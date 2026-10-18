@@ -1,0 +1,37 @@
+{
+  "name": "agybird",
+  "version": "0.1.1",
+  "description": "Delegate code work, image generation or editing, and general tasks to the official Google Antigravity CLI through an existing Gemini subscription.",
+  "author": {
+    "name": "Fioenix",
+    "url": "https://github.com/fioenix"
+  },
+  "homepage": "https://github.com/fioenix/agybird",
+  "repository": "https://github.com/fioenix/agybird",
+  "license": "MIT",
+  "keywords": ["antigravity", "agy", "gemini", "delegation"],
+  "skills": "./.plugin-skills/",
+  "interface": {
+    "displayName": "Agybird",
+    "shortDescription": "Delegate work to Antigravity",
+    "developerName": "Fioenix",
+    "longDescription": "Hand code review, scoped implementation, image generation or editing, and read-only analysis to the official Google Antigravity CLI (agy), using the Antigravity sign-in and Gemini plan you already have. A small local Node.js runner sends each task to agy on standard input and returns one JSON result with status success, partial, needs_permission, blocked, or error, so Codex can verify the work instead of trusting it. Agybird never extracts credentials, never calls private APIs, and never passes --dangerously-skip-permissions; Google keeps enforcing your plan, quota, permissions, sandbox, and content policy. A denied action comes back as a named allow-rule for you to approve. It runs only when you ask for Agybird, agy, or Antigravity CLI by name. Requires Node.js 20 or newer and an authenticated agy install. Prompts and files you delegate are processed by Google under your own account. Agybird is unofficial and not affiliated with Google.",
+    "category": "Productivity",
+    "capabilities": [],
+    "websiteURL": "https://github.com/fioenix/agybird",
+    "supportURL": "https://github.com/fioenix/agybird/issues",
+    "privacyPolicyURL": "https://github.com/fioenix/agybird/blob/main/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/fioenix/agybird/blob/main/TERMS.md",
+    "defaultPrompt": [
+      "Use agy to review this repository read-only and cite the lines behind each finding.",
+      "Use Antigravity CLI to generate a minimal blue-bird image, then inspect the artifact visually.",
+      "Ask agy to summarize docs/ as JSON with summary and risks. Do not write files."
+    ],
+    "brandColor": "#9750C4",
+    "brandColorDark": "#7FE2CE",
+    "composerIcon": "./assets/icon.svg",
+    "composerIconDark": "./assets/icon-dark.svg",
+    "logo": "./assets/icon.svg",
+    "logoDark": "./assets/icon-dark.svg"
+  }
+}

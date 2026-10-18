@@ -10,7 +10,9 @@
     "references/",
     "README.md",
     "LICENSE",
-    "SECURITY.md"
+    "SECURITY.md",
+    "assets/",
+    "agents/"
   ],
   "engines": {
     "node": ">=20"

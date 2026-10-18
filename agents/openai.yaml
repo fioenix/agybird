@@ -1,0 +1,7 @@
+interface:
+  display_name: "Agybird"
+  short_description: "Delegate code, image, and general work to the Antigravity CLI"
+  icon_small: "./assets/icon.svg"
+  icon_large: "./assets/icon.svg"
+  brand_color: "#9750C4"
+  default_prompt: "Use $agybird to have agy review this repository read-only and cite the lines behind each finding."
