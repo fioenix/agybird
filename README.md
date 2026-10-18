@@ -92,6 +92,10 @@ When headless `agy` denies an action it cannot prompt for, `needs_permission` ca
 
 Because Antigravity applies a granted rule to every conversation in that project, a run on a *different* conversation in the same workspace returns `error` while a grant is live, rather than quietly inheriting it. Retry once the other run finishes.
 
+## Data and network
+
+Agybird has no server, analytics, or telemetry. The runner starts one local `agy` process per invocation and talks to nothing else: it sends the task on standard input, reads `agy`'s JSON stream, and prints one envelope. Everything `agy` does with the task, including reading workspace files, fetching URLs, and generating images, happens in Google's CLI under the user's own Google account and Antigravity settings. Outside the workspace the runner writes only `~/.agybird/sessions/` (workspace path and conversation id, never prompts or results) and a lock under `~/.agybird/grant-locks/` while an approved grant is applied. See [PRIVACY.md](PRIVACY.md).
+
 ## Safety defaults
 
 - Read-only unless the user requests a file-changing outcome.
