@@ -1,5 +1,8 @@
 # Agybird
 
+![Agybird — Delegate work to the Antigravity CLI you already use.](assets/wordmark.svg#gh-light-mode-only)
+![Agybird — Delegate work to the Antigravity CLI you already use.](assets/wordmark-dark.svg#gh-dark-mode-only)
+
 [![release](https://img.shields.io/github/v/release/fioenix/agybird)](https://github.com/fioenix/agybird/releases/latest)
 [![CI](https://github.com/fioenix/agybird/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/fioenix/agybird/actions/workflows/ci.yml)
 
@@ -25,6 +28,8 @@ Google continues to enforce subscription eligibility, quota and credit availabil
 
 ## Install
 
+Every install path ships the same skill from the same files. Pick the plugin path for your agent to get versioned updates, or the Skills CLI for a plain skill install.
+
 ### As a Claude Code plugin
 
 Add the marketplace, then install the plugin:
@@ -35,6 +40,17 @@ Add the marketplace, then install the plugin:
 ```
 
 Claude Code pins the installed plugin to the version in `.claude-plugin/plugin.json`, so updates arrive only when that version changes. This path requires Claude Code v2.1.142 or newer.
+
+### As a Codex plugin
+
+Add the marketplace, then install the plugin:
+
+```bash
+codex plugin marketplace add fioenix/agybird
+codex plugin add agybird@agybird
+```
+
+You can also open `/plugins` inside Codex and install Agybird from the `agybird` marketplace. Start a new session afterwards so the skill loads. Codex caches each installed plugin by the version in `.codex-plugin/plugin.json`; to pick up a new release, run `codex plugin marketplace upgrade agybird` and then `codex plugin add agybird@agybird` again.
 
 ### As an Agent Skill
 
@@ -51,8 +67,6 @@ npx skills add fioenix/agybird --global --agent claude-code codex
 ```
 
 The command uses the open-source [Skills CLI](https://github.com/vercel-labs/skills). Review its prompt before confirming destinations.
-
-Both paths install the same skill from the same files. Use the plugin path for versioned updates inside Claude Code, and the skill path for Codex or for a plain skill install.
 
 ## Use
 
@@ -77,6 +91,10 @@ One objective stays in one Antigravity conversation. The runner records the work
 When headless `agy` denies an action it cannot prompt for, `needs_permission` carries a `permission_requests[]` entry naming the tool, the exact target, and the allow-rule that would authorize it, so the caller can ask the user instead of guessing at configuration. After the user approves, `--grant <rule>` applies it to the session being resumed; `--grant-scope once` (the default) removes it again when the run ends, and a rule left behind by an interrupted run is removed by the next one.
 
 Because Antigravity applies a granted rule to every conversation in that project, a run on a *different* conversation in the same workspace returns `error` while a grant is live, rather than quietly inheriting it. Retry once the other run finishes.
+
+## Data and network
+
+Agybird has no server, analytics, or telemetry. The runner starts one local `agy` process per invocation and talks to nothing else: it sends the task on standard input, reads `agy`'s JSON stream, and prints one envelope. Everything `agy` does with the task, including reading workspace files, fetching URLs, and generating images, happens in Google's CLI under the user's own Google account and Antigravity settings. Outside the workspace the runner writes only `~/.agybird/sessions/` (workspace path and conversation id, never prompts or results) and a lock under `~/.agybird/grant-locks/` while an approved grant is applied. See [PRIVACY.md](PRIVACY.md).
 
 ## Safety defaults
 
@@ -104,4 +122,4 @@ The automated suite is the current contract. Two earlier reports are kept as dat
 
 ## License
 
-[MIT](LICENSE). Use of Google Antigravity remains subject to [Google's Antigravity terms](https://antigravity.google/terms).
+[MIT](LICENSE). Use of Google Antigravity remains subject to [Google's Antigravity terms](https://antigravity.google/terms). See [PRIVACY.md](PRIVACY.md) for where delegated data goes and [TERMS.md](TERMS.md) for the terms of use.

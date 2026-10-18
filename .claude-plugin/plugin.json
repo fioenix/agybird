@@ -2,7 +2,12 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "agybird",
   "displayName": "Agybird",
-  "version": "0.1.1",
+  "icon": "./assets/icon.svg",
+  "documentationUrl": "https://github.com/fioenix/agybird#readme",
+  "supportUrl": "https://github.com/fioenix/agybird/issues",
+  "privacyPolicyUrl": "https://github.com/fioenix/agybird/blob/main/PRIVACY.md",
+  "termsOfServiceUrl": "https://github.com/fioenix/agybird/blob/main/TERMS.md",
+  "version": "0.2.0",
   "description": "Delegate code work, image generation or editing, and general tasks to the official Google Antigravity CLI through an existing Gemini subscription.",
   "author": {
     "name": "Fioenix",
@@ -11,5 +16,5 @@
   "homepage": "https://github.com/fioenix/agybird",
   "repository": "https://github.com/fioenix/agybird",
   "license": "MIT",
-  "keywords": ["antigravity", "agy", "gemini", "delegation"]
+  "keywords": ["antigravity", "agy", "gemini", "delegation", "code-review", "agent-skills"]
 }

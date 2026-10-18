@@ -1,0 +1,22 @@
+name: Feature request
+description: Suggest a change to the skill, runner, or plugin packaging.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you are trying to delegate to `agy`, and what stops you today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Agybird keeps Google's permissions, sandbox, and credit settings in the user's hands, so proposals that bypass them will be declined.
+    validations:
+      required: true
+  - type: input
+    id: agy_version
+    attributes:
+      label: Output of `agy --version`, if relevant

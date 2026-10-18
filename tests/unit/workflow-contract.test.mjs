@@ -39,6 +39,8 @@ test('release workflow validates tags before a least-privilege release', () => {
   assert.match(workflow, /^\s+permissions:\r?\n\s+contents: write\r?$/m);
   assert.match(workflow, /npm run check/);
   assert.match(workflow, /gh release create/);
+  assert.match(workflow, /\.claude-plugin\/plugin\.json/);
+  assert.match(workflow, /\.codex-plugin\/plugin\.json/);
   assert.doesNotMatch(workflow, /pull_request_target/);
   assert.doesNotMatch(workflow, /secrets\.(?!GITHUB_TOKEN)/);
 });
