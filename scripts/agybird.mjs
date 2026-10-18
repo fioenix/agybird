@@ -691,6 +691,8 @@ const UNGRANTABLE_DENIAL = /Settings allow-rules do not apply/i;
 // agy 1.1.28+ ends an expired --print-timeout with exit 0 and a SUCCESS result;
 // only this stderr notice says the turn was cut short.
 const PRINT_TIMEOUT_EXPIRED = /print timeout after .* returning partial output/i;
+// agy 1.2.6+ exits 3 (with an AGY_ERROR line on stderr) when the agent or model API fails.
+const AGENT_FAILURE_EXIT_CODE = 3;
 const FAILED_TOOL_STATUS = new Set(['error', 'failed', 'failure', 'denied', 'blocked', 'cancelled', 'canceled']);
 
 // Allow-rule kinds accepted by agy (verified through 1.1.19). The rule kind is
@@ -809,6 +811,10 @@ export function classifyOutcome({ parsed, exitCode, stderr }) {
       return { status: 'blocked', warnings, permissionRequests };
     }
     return { status: 'needs_permission', warnings, permissionRequests };
+  }
+  if (exitCode === AGENT_FAILURE_EXIT_CODE) {
+    warnings.push('agy exited with code 3: the agent or model API failed mid-turn; any response is partial.');
+    return { status: 'error', warnings };
   }
   if (exitCode !== 0) {
     warnings.push(`agy exited with code ${exitCode}`);

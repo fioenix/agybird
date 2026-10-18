@@ -350,3 +350,13 @@ test('reports an expired print timeout as partial although agy exits zero', () =
   assert.equal(outcome.status, 'partial');
   assert.match(outcome.warnings.join('\n'), /print-timeout expired before the turn finished/);
 });
+
+// agy 1.2.6 exits 3 when the agent or model API fails mid-turn.
+test('explains exit code 3 as an agent or model failure', () => {
+  const parsed = parseFixture('success.ndjson');
+  const outcome = classifyOutcome({ parsed, exitCode: 3, stderr: 'AGY_ERROR: {"status":"UNAVAILABLE"}\n' });
+
+  assert.equal(outcome.status, 'error');
+  assert.match(outcome.warnings.join('\n'), /agent or model API failed mid-turn/);
+  assert.doesNotMatch(outcome.warnings.join('\n'), /UNAVAILABLE/, 'raw provider diagnostics stay out of the envelope');
+});

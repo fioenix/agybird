@@ -106,4 +106,4 @@ Report the quota result. Do not modify `useG1Credits` automatically. Ask for exp
 
 Keep the status as `partial` or `error`, preserve the sanitized warning, and check `agy --version` against current official [headless documentation](https://antigravity.google/docs/cli/headless). Do not guess a new event schema from prose output. For images, inspect the `generate_image` tool event and verify the artifact inside the working directory or the exact matching `brain/<conversation_id>` artifact directory.
 
-A `partial` with a warning that `--print-timeout` expired means the turn was cut short; rerun with a longer `--timeout` in the same session.
+A `partial` with a warning that `--print-timeout` expired means the turn was cut short; rerun with a longer `--timeout` in the same session. An `error` after exit code 3 means the agent or model API failed mid-turn (agy prints an `AGY_ERROR` line on stderr); the runner keeps that line out of the envelope, so rerun the follow-up in the same session or check quota and service status.

@@ -37,7 +37,7 @@ The runner prints one JSON envelope to stdout:
 - `partial`: Antigravity returned a terminal result, but at least one tool action failed, or `--timeout` expired before the turn finished. Since `agy` 1.1.28 an expired timeout still exits 0 with a `SUCCESS` result and whatever partial response exists; the runner reads the timeout notice on stderr and reports `partial` instead.
 - `needs_permission`: an action was denied and an allow-rule would authorize it. Every denied action is described in `permission_requests[]`. Ask the user to decide; see [troubleshooting.md](troubleshooting.md).
 - `blocked`: an action was denied and no allow-rule applies.
-- `error`: process, stream, timeout, or artifact validation failed.
+- `error`: the process, stream, or artifact validation failed, or the runner had to kill `agy`. Exit code 3 means the agent or model API failed mid-turn; any response is partial.
 
 The envelope provides comprehensive execution metrics:
 - `structured_output`: Parsed payload when `--json-schema` is enforced.
