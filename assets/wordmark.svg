@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="144" viewBox="0 0 640 144" role="img" aria-labelledby="title">
+  <title id="title">Agybird — Delegate work to the Antigravity CLI you already use.</title>
+  <g transform="translate(14 8)">
+    <path d="M20 96 Q37 62 58 88 Q74 56 98 70" fill="none" stroke="#9750C4" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="98" cy="34" r="11" fill="none" stroke="#9750C4" stroke-width="9"/>
+  </g>
+  <text x="148" y="75" font-family="system-ui, sans-serif" font-size="48" font-weight="650" letter-spacing="-1.5" fill="#0B0B17">Agybird</text>
+  <text x="150" y="109" font-family="system-ui, sans-serif" font-size="20" fill="#5B5B79">Delegate work to the Antigravity CLI you already use.</text>
+</svg>
