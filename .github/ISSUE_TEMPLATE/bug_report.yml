@@ -1,0 +1,81 @@
+name: Bug report
+description: Report a runner, skill, or plugin problem with a redacted result envelope.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Issues are public. Do not post credentials, tokens, personal data, private repository content, or unredacted prompts, including in screenshots.
+        Security problems go through [Report a vulnerability](https://github.com/fioenix/agybird/security/advisories/new), not here.
+        Problems with Antigravity sign-in, subscription eligibility, quota, or Google's service behaviour belong with Google.
+  - type: input
+    id: agybird_version
+    attributes:
+      label: Agybird version and install path
+      description: The version and how you installed it (Claude Code plugin, Codex plugin, or `npx skills add`).
+      placeholder: "0.2.0, Codex plugin agybird@agybird"
+    validations:
+      required: true
+  - type: input
+    id: agy_version
+    attributes:
+      label: Output of `agy --version`
+      placeholder: "1.4.2"
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: Host agent and version
+      placeholder: "Claude Code 2.1.x, Codex CLI 0.163.0, or Codex app"
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and Node.js version
+      placeholder: "macOS 26, Node.js 22.11.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - code
+        - image
+        - general
+        - install or packaging
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The runner flags you used (`--category`, `--mode`, `--grant`, `--new-session`) and a minimal, shareable task.
+      placeholder: "1. Ask Claude Code: Use agy to ...\n2. The runner is invoked with --category code --mode read\n3. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: envelope
+    attributes:
+      label: Redacted result envelope
+      description: The JSON envelope the runner printed. Replace prompts, responses, file paths, conversation ids, and anything private with `<redacted>`, but keep `status`, `warnings`, `permission_requests`, and the `evidence` fields such as `agy_exit_code` and `agy_status` that show the problem.
+      render: json
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before posting
+      options:
+        - label: I removed credentials, personal data, and private content from everything above.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

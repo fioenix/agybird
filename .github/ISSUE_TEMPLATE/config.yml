@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/fioenix/agybird/security/advisories/new
+    about: Report vulnerabilities privately. Do not post them, or credentials, in a public issue.
+  - name: Antigravity account, quota, or service problems
+    url: https://antigravity.google/docs/cli/overview
+    about: Sign-in, subscription eligibility, quota, and service behaviour are owned by Google.
