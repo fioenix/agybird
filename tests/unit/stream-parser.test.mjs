@@ -489,3 +489,12 @@ test('describes every denied_actions entry that no tool event accounts for', () 
   assert.equal(permissionRequests[1].tool, 'RunCommand');
   assert.equal(permissionRequests[1].target, null);
 });
+
+// The stderr notice is agy's wording, so reaching the deadline is a signal of its own.
+test('reports a run that reached its print timeout as partial without the stderr notice', () => {
+  const parsed = parseFixture('agy-1.4.2-print-timeout.ndjson');
+  const outcome = classifyOutcome({ parsed, exitCode: 0, stderr: '', deadlineReached: true });
+
+  assert.equal(outcome.status, 'partial');
+  assert.match(outcome.warnings.join('\n'), /print-timeout expired before the turn finished/);
+});

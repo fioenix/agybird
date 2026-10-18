@@ -834,7 +834,7 @@ export function describePermissionRequests(parsed, stderr = '') {
   return requests;
 }
 
-export function classifyOutcome({ parsed, exitCode, stderr }) {
+export function classifyOutcome({ parsed, exitCode, stderr, deadlineReached = false }) {
   const warnings = [...parsed.warnings];
   const toolErrors = parsed.toolCalls.filter((tool) => FAILED_TOOL_STATUS.has(tool.status) || tool.error);
   const permissionText = [
@@ -862,7 +862,7 @@ export function classifyOutcome({ parsed, exitCode, stderr }) {
     warnings.push(`agy exited with code ${exitCode}`);
     return { status: 'error', warnings };
   }
-  if (PRINT_TIMEOUT_EXPIRED.test(stderr)) {
+  if (deadlineReached || PRINT_TIMEOUT_EXPIRED.test(stderr)) {
     warnings.push('agy --print-timeout expired before the turn finished; the response is incomplete.');
     return { status: 'partial', warnings };
   }
@@ -920,9 +920,12 @@ export function makeEnvelope({
 
 // agy 1.1.28+ answers an expired --print-timeout itself with the partial output,
 // so the hard kill waits a little longer to let that answer arrive.
+export function killGrace(timeout) {
+  return Math.min(10_000, timeoutToMilliseconds(timeout));
+}
+
 export function killDeadline(timeout) {
-  const milliseconds = timeoutToMilliseconds(timeout);
-  return milliseconds + Math.min(10_000, milliseconds);
+  return timeoutToMilliseconds(timeout) + killGrace(timeout);
 }
 
 export function timeoutToMilliseconds(timeout) {
@@ -1051,6 +1054,7 @@ export async function runAgy(options, delegatedPrompt, env = process.env) {
     throw new Error('Official Antigravity CLI version preflight failed');
   }
 
+  const startedAt = Date.now();
   const execution = await spawnCaptured(
     binary.command,
     [...binary.prefixArgs, ...buildAgyArgs(options, delegatedPrompt)],
@@ -1062,6 +1066,7 @@ export async function runAgy(options, delegatedPrompt, env = process.env) {
   );
   return {
     ...execution,
+    elapsedMs: Date.now() - startedAt,
     binaryPath: binary.displayPath,
     version: preflight.stdout.trim().split(/\r?\n/, 1)[0],
   };
@@ -1268,10 +1273,15 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
     if (parsed.conversationId) {
       writeSession(options.cwd, parsed.conversationId, stateDirectory);
     }
-    let outcome = classifyOutcome({ parsed, exitCode: execution.exitCode, stderr: execution.stderr });
+    let outcome = classifyOutcome({
+      parsed,
+      exitCode: execution.exitCode,
+      stderr: execution.stderr,
+      deadlineReached: execution.elapsedMs >= timeoutToMilliseconds(options.timeout),
+    });
 
     if (execution.timedOut) {
-      outcome = { ...outcome, status: 'error', warnings: [...outcome.warnings, `agy timed out after ${options.timeout}`] };
+      outcome = { ...outcome, status: 'error', warnings: [...outcome.warnings, `agy timed out and was stopped ${killGrace(options.timeout)}ms after the ${options.timeout} print timeout`] };
     }
     if (execution.overflowed) {
       outcome = { ...outcome, status: 'error', warnings: [...outcome.warnings, 'agy output exceeded the 16 MiB limit'] };

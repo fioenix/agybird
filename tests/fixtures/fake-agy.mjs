@@ -81,6 +81,14 @@ if (prompt.includes('CASE_DELAY')) {
   // agy 1.1.28+: an expired --print-timeout still exits 0 with a SUCCESS result.
   process.stderr.write('[agy] print timeout after 8s with turn in progress; returning partial output\n');
   emit({ event: 'result', result: { conversation_id: 'fake-conversation', status: 'SUCCESS', response: '' } });
+} else if (prompt.includes('CASE_LATE_PARTIAL')) {
+  // Answers just after its --print-timeout, as agy 1.1.28+ does, inside the runner's grace period.
+  const value = process.argv[process.argv.indexOf('--print-timeout') + 1];
+  const milliseconds = Number.parseInt(value, 10) * (value.endsWith('ms') ? 1 : 1_000);
+  setTimeout(() => {
+    process.stderr.write(`[agy] print timeout after ${value} with turn in progress; returning partial output\n`);
+    emit({ event: 'result', result: { conversation_id: 'fake-conversation', status: 'SUCCESS', response: 'half an answer' } });
+  }, milliseconds + 100);
 } else if (prompt.includes('CASE_IMAGE_SUBAGENT')) {
   // agy 1.2.16+: the image-generator subagent saves into the conversation's brain directory.
   const conversationRoot = join(homedir(), '.gemini', 'antigravity-cli', 'brain', 'fake-conversation');
