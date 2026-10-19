@@ -4,6 +4,11 @@ All notable changes to Agybird are documented in this file.
 
 ## Unreleased
 
+## 0.2.1 - 2026-10-19
+
+- `.agents/plugins/marketplace.json` now serves as the consolidated **Finolabs** Codex marketplace catalog (keeping the marketplace name `agybird` so `agybird@agybird` remains stable) and lists `agybird@agybird` (`./`), `vietnamizer@agybird` (`https://github.com/fioenix/vietnamizer.git`), and `markmap-skills@agybird` (`https://github.com/fioenix/markmap-skills.git`). `README.md` documents remote and local-clone marketplace registration plus safe migration from standalone `vietnamizer@vietnamizer` and `markmap-skills@fioenix-plugins` installs.
+- Verified against `agy` 1.4.2: project `command(...)` grants now write safe unescaped literal targets so quoted path arguments containing `.` match `agy`'s literal command rule check, while still rejecting decoded targets that begin with `regex:` or contain wildcard or regex syntax and leaving non-command grant kinds, workspace locks, and `once` cleanup unchanged.
+
 ## 0.2.0 - 2026-10-18
 
 Verified against `agy` 1.4.2 with live headless runs on macOS: a read-only task, a denied command, an expired print timeout, and image generation.

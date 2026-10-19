@@ -43,14 +43,29 @@ Claude Code pins the installed plugin to the version in `.claude-plugin/plugin.j
 
 ### As a Codex plugin
 
-Add the marketplace, then install the plugin:
+`.agents/plugins/marketplace.json` defines the shared **Finolabs** Codex marketplace (keeping the marketplace identifier `agybird` so `agybird@agybird` remains stable) and lists three Finolabs plugins: `agybird@agybird`, `vietnamizer@agybird`, and `markmap-skills@agybird`.
+
+Once the consolidated catalog is published to GitHub, add the remote marketplace and install the plugins you want:
 
 ```bash
 codex plugin marketplace add fioenix/agybird
 codex plugin add agybird@agybird
+codex plugin add vietnamizer@agybird
+codex plugin add markmap-skills@agybird
 ```
 
-You can also open `/plugins` inside Codex and install Agybird from the `agybird` marketplace. Start a new session afterwards so the skill loads. Codex caches each installed plugin by the version in `.codex-plugin/plugin.json`; to pick up a new release, run `codex plugin marketplace upgrade agybird` and then `codex plugin add agybird@agybird` again.
+To test or install from a local clone before the updated catalog is published remotely, register the local checkout path instead:
+
+```bash
+codex plugin marketplace add /path/to/agybird
+codex plugin add agybird@agybird
+codex plugin add vietnamizer@agybird
+codex plugin add markmap-skills@agybird
+```
+
+You can also open `/plugins` inside Codex and install from the **Finolabs** (`agybird`) marketplace. Start a new session afterwards so the skills load. Codex caches each installed plugin by the version in `.codex-plugin/plugin.json`; to pick up a new release, run `codex plugin marketplace upgrade agybird` and then `codex plugin add <plugin>@agybird` again.
+
+**Migration and rollback:** If you previously installed standalone `vietnamizer@vietnamizer` or `markmap-skills@fioenix-plugins` catalogs (which remain in their sibling repositories for legacy compatibility), back up the relevant Codex plugin/marketplace entries first while preserving unrelated configuration, MCP servers, and plugins. Register the consolidated `agybird` (**Finolabs**) marketplace source and verify that `agybird@agybird`, `vietnamizer@agybird`, and `markmap-skills@agybird` install cleanly before removing or disabling the old standalone plugin installs (`vietnamizer@vietnamizer`, `markmap-skills@fioenix-plugins`) and legacy marketplace registrations (`vietnamizer`, `fioenix-plugins`) so duplicate skills do not load together. To roll back, re-add or re-enable only the specific legacy marketplaces (`fioenix/vietnamizer`, `fioenix/markmap-skills`) and reinstall `vietnamizer@vietnamizer` and `markmap-skills@fioenix-plugins` before removing the `@agybird` replacements—do not overwrite `~/.codex/` in bulk over unrelated configuration changes.
 
 ### As an Agent Skill
 

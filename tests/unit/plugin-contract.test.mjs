@@ -144,15 +144,29 @@ test('the Codex interface has every field the plugin directory requires', () => 
   assert.equal(ui.logo, plugin.icon);
 });
 
-test('the Codex marketplace lists exactly this repository as a local plugin', () => {
+test('the Codex marketplace lists the consolidated Finolabs catalog under the agybird identifier', () => {
   assert.equal(codexMarketplace.name, marketplace.name);
-  assert.equal(codexMarketplace.interface?.displayName, plugin.displayName);
-  assert.equal(codexMarketplace.plugins.length, 1);
-  const [entry] = codexMarketplace.plugins;
-  assert.equal(entry.name, codexPlugin.name);
-  assert.deepEqual(entry.source, { source: 'local', path: './' });
-  assert.deepEqual(entry.policy, { installation: 'AVAILABLE', authentication: 'ON_INSTALL' });
-  assert.equal(entry.category, codexPlugin.interface.category);
+  assert.equal(codexMarketplace.interface?.displayName, 'Finolabs');
+  assert.deepEqual(codexMarketplace.plugins, [
+    {
+      name: codexPlugin.name,
+      source: { source: 'local', path: './' },
+      policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' },
+      category: codexPlugin.interface.category,
+    },
+    {
+      name: 'vietnamizer',
+      source: { source: 'url', url: 'https://github.com/fioenix/vietnamizer.git' },
+      policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' },
+      category: 'Productivity',
+    },
+    {
+      name: 'markmap-skills',
+      source: { source: 'url', url: 'https://github.com/fioenix/markmap-skills.git' },
+      policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' },
+      category: 'Productivity',
+    },
+  ]);
 });
 
 test('the icon set shares one self-contained mark across light and dark variants', () => {
@@ -194,6 +208,8 @@ test('README documents both plugin install paths alongside the skill install pat
   assert.match(readme, /\/plugin install agybird@agybird/);
   assert.match(readme, /codex plugin marketplace add fioenix\/agybird/);
   assert.match(readme, /codex plugin add agybird@agybird/);
+  assert.match(readme, /codex plugin add vietnamizer@agybird/);
+  assert.match(readme, /codex plugin add markmap-skills@agybird/);
   assert.match(readme, /\(assets\/wordmark\.svg#gh-light-mode-only\)/);
   assert.match(readme, /\(assets\/wordmark-dark\.svg#gh-dark-mode-only\)/);
 });
