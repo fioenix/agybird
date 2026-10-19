@@ -45,7 +45,7 @@ Claude Code pins the installed plugin to the version in `.claude-plugin/plugin.j
 
 `.agents/plugins/marketplace.json` defines the shared **Finolabs** Codex marketplace (`"name": "Finolabs"`, `"displayName": "Finolabs"`). The marketplace source repository remains `fioenix/agybird`, while the marketplace machine identity is `Finolabs` (different from the repository name), providing three shared selectors: `agybird@Finolabs`, `vietnamizer@Finolabs`, and `markmap-skills@Finolabs`.
 
-Once the updated catalog is published to GitHub, add the remote marketplace source and install the plugins you want:
+Once the updated catalog is published to GitHub, fresh installs without an existing `agybird` marketplace registration can add the remote marketplace source directly and install the plugins they want:
 
 ```bash
 codex plugin marketplace add fioenix/agybird
@@ -54,7 +54,7 @@ codex plugin add vietnamizer@Finolabs
 codex plugin add markmap-skills@Finolabs
 ```
 
-To test or install from a local clone before the updated catalog is published remotely, register the local checkout path instead:
+To test or install from a local clone (or before the updated catalog is published remotely), register the local checkout path instead:
 
 ```bash
 codex plugin marketplace add /path/to/agybird
@@ -63,9 +63,13 @@ codex plugin add vietnamizer@Finolabs
 codex plugin add markmap-skills@Finolabs
 ```
 
-You can also open `/plugins` inside Codex and install from the **Finolabs** marketplace. Start a new session afterwards so the skills load. Codex caches each installed plugin by the version in `.codex-plugin/plugin.json`; to pick up a new release, run `codex plugin marketplace upgrade Finolabs` and then `codex plugin add <plugin>@Finolabs` again.
+You can also open `/plugins` inside Codex and install from the **Finolabs** marketplace. Start a new session afterwards so the skills load. Codex caches each installed plugin by the version in `.codex-plugin/plugin.json`; to pick up a new release on an already-registered `Finolabs` marketplace, run `codex plugin marketplace upgrade Finolabs` and then `codex plugin add <plugin>@Finolabs` again.
 
-**Migration and rollback:** If you previously installed from the legacy `agybird` marketplace identity (`agybird@agybird`, `vietnamizer@agybird`, `markmap-skills@agybird`) or earlier standalone catalogs (`vietnamizer@vietnamizer`, `markmap-skills@fioenix-plugins`), back up the relevant Codex plugin/marketplace entries first while preserving unrelated configuration, MCP servers, and plugins. Register the updated `Finolabs` marketplace source (`fioenix/agybird` or `/path/to/agybird`) and verify that all three plugins (`agybird@Finolabs`, `vietnamizer@Finolabs`, and `markmap-skills@Finolabs`) install and load cleanly before removing or disabling the old plugin registrations (`@agybird`, `vietnamizer@vietnamizer`, `markmap-skills@fioenix-plugins`) and legacy marketplace entries (`agybird`, `vietnamizer`, `fioenix-plugins`) so duplicate skills do not load together. To roll back selectively (since unpinned `fioenix/agybird` resolves the `Finolabs` catalog once published), register the pre-change catalog with `codex plugin marketplace add fioenix/agybird --ref v0.2.1` (or a retained local snapshot of the old `agybird` catalog), or re-add the standalone legacy marketplaces (`fioenix/vietnamizer`, `fioenix/markmap-skills`), reinstall and verify the desired old selectors (`agybird@agybird`, `vietnamizer@agybird`, `markmap-skills@agybird`, or standalone `vietnamizer@vietnamizer` / `markmap-skills@fioenix-plugins`) before removing the `Finolabs` marketplace and `@Finolabs` entries—do not overwrite `~/.codex/` in bulk over unrelated configuration changes.
+**Migration and rollback:** Codex rejects `codex plugin marketplace upgrade agybird` when the fetched catalog's `"name"` changes from `"agybird"` to `"Finolabs"`, and re-running `codex plugin marketplace add fioenix/agybird` while the old Git source is still registered can reuse the existing `agybird` source instead of creating `Finolabs` side-by-side. If you previously installed from the legacy `agybird` marketplace identity (`agybird@agybird`, `vietnamizer@agybird`, `markmap-skills@agybird`) or earlier standalone catalogs (`vietnamizer@vietnamizer`, `markmap-skills@fioenix-plugins`), do not run `upgrade agybird` as a rename:
+1. Back up the relevant Codex plugin/marketplace entries first while preserving unrelated configuration, MCP servers, and plugins.
+2. Use a distinct local checkout/clone of `fioenix/agybird` whose `.agents/plugins/marketplace.json` declares `"name": "Finolabs"` (for example `git clone https://github.com/fioenix/agybird.git /path/to/finolabs-catalog` or your local `/path/to/agybird` checkout) and register that local path with `codex plugin marketplace add /path/to/finolabs-catalog` so Codex creates the `Finolabs` marketplace side-by-side with your existing Git-registered `agybird` marketplace.
+3. Install `agybird@Finolabs`, `vietnamizer@Finolabs`, and `markmap-skills@Finolabs` and verify that all three replacements load cleanly before removing or disabling the old plugin selectors (`@agybird`, `vietnamizer@vietnamizer`, `markmap-skills@fioenix-plugins`) and removing the legacy marketplace entries (`agybird`, `vietnamizer`, `fioenix-plugins`) via supported Codex CLI commands so duplicate skills do not load together. Keeping the local catalog registration alone suffices.
+4. To roll back selectively (since unpinned `fioenix/agybird` resolves the `Finolabs` catalog once published), register the pre-change catalog with `codex plugin marketplace add fioenix/agybird --ref v0.2.1` (or a retained local snapshot of the old `agybird` catalog), or re-add the standalone legacy marketplaces (`fioenix/vietnamizer`, `fioenix/markmap-skills`), reinstall and verify the desired old selectors (`agybird@agybird`, `vietnamizer@agybird`, `markmap-skills@agybird`, or standalone `vietnamizer@vietnamizer` / `markmap-skills@fioenix-plugins`) before removing the `Finolabs` marketplace and `@Finolabs` entries—do not overwrite `~/.codex/` in bulk over unrelated configuration changes.
 
 ### As an Agent Skill
 
