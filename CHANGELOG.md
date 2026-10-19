@@ -4,6 +4,8 @@ All notable changes to Agybird are documented in this file.
 
 ## Unreleased
 
+- Changed the Codex marketplace machine identity (`name` in `.agents/plugins/marketplace.json`) from `agybird` to exact-case `Finolabs`, updating the shared Codex plugin selectors to `agybird@Finolabs`, `vietnamizer@Finolabs`, and `markmap-skills@Finolabs` while keeping the Claude Code marketplace identity (`agybird`) unchanged. Existing `@agybird` users should migrate by registering a distinct local checkout side-by-side and verifying all three `@Finolabs` plugins before removing the old `@agybird` selectors and `agybird` marketplace (with selective rollback available via `codex plugin marketplace add fioenix/agybird --ref v0.2.1`; see `README.md`).
+
 ## 0.2.1 - 2026-10-19
 
 - `.agents/plugins/marketplace.json` now serves as the consolidated **Finolabs** Codex marketplace catalog (keeping the marketplace name `agybird` so `agybird@agybird` remains stable) and lists `agybird@agybird` (`./`), `vietnamizer@agybird` (`https://github.com/fioenix/vietnamizer.git`), and `markmap-skills@agybird` (`https://github.com/fioenix/markmap-skills.git`). `README.md` documents remote and local-clone marketplace registration plus safe migration from standalone `vietnamizer@vietnamizer` and `markmap-skills@fioenix-plugins` installs.
