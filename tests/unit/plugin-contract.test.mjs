@@ -144,8 +144,8 @@ test('the Codex interface has every field the plugin directory requires', () => 
   assert.equal(ui.logo, plugin.icon);
 });
 
-test('the Codex marketplace lists the consolidated Finolabs catalog under the agybird identifier', () => {
-  assert.equal(codexMarketplace.name, marketplace.name);
+test('the Codex marketplace lists the consolidated Finolabs catalog under the Finolabs identifier', () => {
+  assert.equal(codexMarketplace.name, 'Finolabs');
   assert.equal(codexMarketplace.interface?.displayName, 'Finolabs');
   assert.deepEqual(codexMarketplace.plugins, [
     {
@@ -207,9 +207,9 @@ test('README documents both plugin install paths alongside the skill install pat
   assert.match(readme, /\/plugin marketplace add fioenix\/agybird/);
   assert.match(readme, /\/plugin install agybird@agybird/);
   assert.match(readme, /codex plugin marketplace add fioenix\/agybird/);
-  assert.match(readme, /codex plugin add agybird@agybird/);
-  assert.match(readme, /codex plugin add vietnamizer@agybird/);
-  assert.match(readme, /codex plugin add markmap-skills@agybird/);
+  assert.match(readme, /codex plugin add agybird@Finolabs/);
+  assert.match(readme, /codex plugin add vietnamizer@Finolabs/);
+  assert.match(readme, /codex plugin add markmap-skills@Finolabs/);
   assert.match(readme, /\(assets\/wordmark\.svg#gh-light-mode-only\)/);
   assert.match(readme, /\(assets\/wordmark-dark\.svg#gh-dark-mode-only\)/);
 });
