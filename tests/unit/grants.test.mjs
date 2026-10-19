@@ -173,3 +173,66 @@ test('adds grants to the workspace project and restores its exact prior content'
     rmSync(workspace, { recursive: true, force: true });
   }
 });
+
+test('stores command rules with quoted path arguments as exact literals while keeping non-command rules unchanged', () => {
+  const directory = temporaryDirectory();
+  const projectPath = join(directory, 'quoted.json');
+  const original = JSON.stringify({
+    id: 'quoted',
+    name: 'quoted',
+    projectResources: { resources: [] },
+  }, null, 1);
+  writeFileSync(projectPath, original);
+
+  try {
+    const state = applyGrants(projectPath, [
+      'command(note-cli workspace="Example Notes" read path="docs/guides/release-check\\.md")',
+      'command(note-cli workspace="Example Notes" read path="docs/guides/release-check\\.md")',
+      'write_file(/repo/src/main\\.ts)',
+      'read_file(/repo/docs/release-check\\.md)',
+    ]);
+
+    const written = JSON.parse(readFileSync(projectPath, 'utf8'));
+    assert.deepEqual(written.permissionGrants.permissionGrants.allow, [
+      'command(note-cli workspace="Example Notes" read path="docs/guides/release-check.md")',
+      'write_file(/repo/src/main\\.ts)',
+      'read_file(/repo/docs/release-check\\.md)',
+    ]);
+
+    revertGrants(state);
+    assert.equal(readFileSync(projectPath, 'utf8'), original);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('rejects command grants whose decoded literal introduces wildcard syntax or a regex: prefix without writing the project file', () => {
+  const directory = temporaryDirectory();
+  const projectPath = join(directory, 'unsafe.json');
+  const original = JSON.stringify({
+    id: 'unsafe',
+    name: 'unsafe',
+    projectResources: { resources: [] },
+  }, null, 1);
+  writeFileSync(projectPath, original);
+
+  try {
+    for (const unsafeRule of [
+      'command(rm \\*)',
+      'command(git log main\\.\\*)',
+      'command(ls file\\?)',
+      'command(echo \\[a-z\\])',
+      'command(regex:git status)',
+      'command(  REGEX:git\\.status)',
+    ]) {
+      assert.throws(
+        () => applyGrants(projectPath, [unsafeRule]),
+        /wildcard or regex syntax/,
+        unsafeRule,
+      );
+      assert.equal(readFileSync(projectPath, 'utf8'), original);
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

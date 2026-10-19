@@ -1,10 +1,28 @@
 {
   "name": "agybird",
-  "interface": { "displayName": "Agybird" },
+  "interface": { "displayName": "Finolabs" },
   "plugins": [
     {
       "name": "agybird",
       "source": { "source": "local", "path": "./" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    },
+    {
+      "name": "vietnamizer",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/fioenix/vietnamizer.git"
+      },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    },
+    {
+      "name": "markmap-skills",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/fioenix/markmap-skills.git"
+      },
       "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
       "category": "Productivity"
     }

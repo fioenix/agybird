@@ -428,17 +428,36 @@ export function resolveSession(options, directory = STATE_DIRECTORY) {
   return readSession(options.cwd, directory);
 }
 
+// agy 1.4.2 matches a project `command(...)` allow-rule literally unless its
+// target begins with `regex:`, so `\.` from `escapeRuleTarget` fails to match a
+// `.` inside quoted arguments. Unescape safe literal command targets before
+// writing them, while rejecting targets that would activate `regex:` or introduce
+// wildcard/pattern syntax (`*`, `?`, `+`, `^`, `$`, `{`, `}`, `(`, `)`, `|`, `[`, `]`, `\`).
+const UNSAFE_COMMAND_CHARACTERS = /[*+?^${}()|[\]\\]/;
+
+function storedGrantRule(rule) {
+  const match = RULE_PATTERN.exec(rule);
+  if (!match || match[1] !== 'command') return rule;
+  const { target } = parseGrantRule(rule);
+  const literal = literalRuleTarget(target);
+  if (/^\s*regex:/i.test(literal) || UNSAFE_COMMAND_CHARACTERS.test(literal)) {
+    throw new Error(`Command allow-rule target cannot contain wildcard or regex syntax: ${rule}`);
+  }
+  return `command(${literal})`;
+}
+
 // Antigravity reads project grants from ~/.gemini/config/projects/<id>.json and
 // applies them when the session runs under `--project <id>`. Writing here keeps
 // the grant scoped to one repository and never touches the working tree.
 export function applyGrants(projectPath, rules) {
+  const normalizedRules = rules.map(storedGrantRule);
   const previous = readFileSync(projectPath, 'utf8');
   const document = JSON.parse(previous);
 
   document.permissionGrants ??= {};
   document.permissionGrants.permissionGrants ??= {};
   const allow = (document.permissionGrants.permissionGrants.allow ??= []);
-  for (const rule of rules) {
+  for (const rule of normalizedRules) {
     if (!allow.includes(rule)) allow.push(rule);
   }
   document.updatedAt = new Date().toISOString();
