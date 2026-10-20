@@ -28,7 +28,9 @@ test('README describes three categories and the provider boundary', () => {
 test('security policy uses private GitHub advisories and has supported versions', () => {
   const security = read('SECURITY.md');
   assert.match(security, /private security advisory/i);
-  assert.match(security, /0\.2\.x/);
+  // The supported line must follow the release, or the policy silently drops the current version.
+  const [major, minor] = JSON.parse(read('package.json')).version.split('.');
+  assert.match(security, new RegExp(`\\| ${major}\\.${minor}\\.x \\| Yes \\|`));
   assert.doesNotMatch(security, /security@example|YOUR_EMAIL/i);
 });
 
