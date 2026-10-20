@@ -34,7 +34,7 @@ Do not try to rename the old marketplace with `upgrade`. Register `Finolabs` sid
    codex plugin add markmap-skills@Finolabs
    ```
 
-4. Only after all three load, remove or disable the old selectors (`@agybird`, `vietnamizer@vietnamizer`, `markmap-skills@fioenix-plugins`) and the old marketplaces (`agybird`, `vietnamizer`, `fioenix-plugins`) with the supported Codex CLI commands, so the same skill does not load twice. The local `Finolabs` registration is enough to keep receiving the catalog.
+4. Only after all three load, remove or disable the old selectors (`@agybird`, `vietnamizer@vietnamizer`, `markmap-skills@fioenix-plugins`) and the old marketplaces (`agybird`, `vietnamizer`, `fioenix-plugins`) with the supported Codex CLI commands, so the same skill does not load twice. Keeping only the local `Finolabs` registration is enough; run `git pull` in that clone to receive catalog updates.
 
 ## Roll back
 
@@ -44,4 +44,4 @@ The unpinned `fioenix/agybird` source now resolves to the `Finolabs` catalog, so
 2. Reinstall the old selectors you want (`agybird@agybird`, `vietnamizer@agybird`, `markmap-skills@agybird`, or the standalone `vietnamizer@vietnamizer` and `markmap-skills@fioenix-plugins`) and verify that they load.
 3. Then remove the `Finolabs` marketplace and its `@Finolabs` entries.
 
-Never restore `~/.codex/` wholesale over newer, unrelated configuration changes.
+Never overwrite `~/.codex/` in bulk; that discards newer, unrelated configuration changes.

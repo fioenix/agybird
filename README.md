@@ -44,7 +44,9 @@ Claude Code pins the installed plugin to the version in `.claude-plugin/plugin.j
 
 ### As a Codex plugin
 
-This repository also hosts the **Finolabs** Codex marketplace, which lists Agybird next to two plugins by the same author, [Vietnamizer](https://github.com/fioenix/vietnamizer) and [Markmap Skills](https://github.com/fioenix/markmap-skills). Add the marketplace, then install only the plugins you want:
+**Already installed 0.2.x from Codex?** Do not run the commands below: the Codex marketplace was named `agybird` before 0.3.0, and `codex plugin marketplace upgrade agybird` fails because the name changed. Follow the [migration guide](docs/migration.md) to move to `@Finolabs` side by side and to roll back if needed.
+
+This repository hosts the **Finolabs** Codex marketplace, which lists Agybird next to two plugins by the same author, [Vietnamizer](https://github.com/fioenix/vietnamizer) and [Markmap Skills](https://github.com/fioenix/markmap-skills). For a new install, add the marketplace, then install only the plugins you want:
 
 ```bash
 codex plugin marketplace add fioenix/agybird
@@ -56,8 +58,6 @@ codex plugin add markmap-skills@Finolabs
 You can also open `/plugins` inside Codex and install from the **Finolabs** marketplace. Start a new session afterwards so the skills load. To try a local clone, pass its path instead: `codex plugin marketplace add /path/to/agybird`.
 
 Codex caches each plugin by the version in `.codex-plugin/plugin.json`. To pick up a new release, run `codex plugin marketplace upgrade Finolabs`, then `codex plugin add <plugin>@Finolabs` again.
-
-**Upgrading from 0.2.x:** the Codex marketplace was named `agybird` before 0.3.0, and `codex plugin marketplace upgrade agybird` fails because the name changed. Follow the [migration guide](docs/migration.md) to move to `@Finolabs` side by side and to roll back if needed.
 
 ### As an Agent Skill
 
