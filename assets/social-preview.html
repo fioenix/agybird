@@ -4,32 +4,50 @@
   Render: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new \
     --hide-scrollbars --force-device-scale-factor=1 --window-size=1280,640 \
     --screenshot=assets/social-preview.png "file://$PWD/assets/social-preview.html"
-  Upload the PNG under Settings > General > Social preview. Uses system fonts, so
-  rendering on another OS shifts the type slightly.
+  Upload the PNG under Settings > General > Social preview. Set in Futura and SF Mono
+  (macOS); other systems substitute fonts and shift the type.
 -->
 <html><head><meta charset="utf-8"><style>
+  :root{--dusk:#3A1758;--night:#1A0A2E;--violet:#9750C4;--mint:#7FE2CE;--paper:#F7F2FC;--ink:#22123A}
   html,body{margin:0;width:1280px;height:640px;overflow:hidden}
-  body{background:#FBF8FD;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Arial,sans-serif;color:#0B0B17;position:relative}
-  .accent{position:absolute;left:0;top:0;width:100%;height:12px;background:linear-gradient(90deg,#9750C4 0 70%,#7FE2CE 70% 100%)}
-  .wrap{position:absolute;inset:0;display:flex;align-items:center;padding:0 96px;gap:72px}
-  .mark{flex:0 0 300px;height:300px;border-radius:64px;background:#fff;box-shadow:0 1px 0 #E9E2F1,0 18px 48px rgba(151,80,196,.14);display:flex;align-items:center;justify-content:center}
-  .mark svg{width:236px;height:236px}
-  h1{margin:0;font-size:112px;font-weight:700;letter-spacing:-4px;line-height:1}
-  .tag{margin:22px 0 0;font-size:40px;line-height:1.25;color:#3D3D58;font-weight:500;max-width:680px}
-  .meta{position:absolute;left:96px;right:96px;bottom:56px;display:flex;justify-content:space-between;font-size:24px;color:#6B6B88}
-  .meta b{color:#9750C4;font-weight:600}
+  body{position:relative;color:#fff;font-family:Futura,"Futura PT","Century Gothic",sans-serif;
+    background:
+      radial-gradient(480px 360px at 790px 300px,rgba(151,80,196,.55),transparent 70%),
+      linear-gradient(180deg,var(--dusk) 0%,var(--night) 100%)}
+  .copy{position:absolute;left:88px;top:118px;width:520px}
+  h1{margin:0;font-weight:700;font-size:118px;line-height:.9;letter-spacing:-3px}
+  .tag{margin:30px 0 0;font-weight:500;font-size:34px;line-height:1.28;color:#E9DDF5}
+  .foot{position:absolute;left:88px;bottom:62px;font-weight:500;font-size:22px;color:#B9A6CF;line-height:1.5}
+  .foot b{color:var(--mint);font-weight:500}
+  .card{position:absolute;font-family:"SF Mono",SFMono-Regular,Menlo,monospace;font-size:19px;line-height:1.55;border-radius:14px;padding:20px 24px;white-space:pre}
+  .prompt{left:650px;top:448px;transform:rotate(-3deg);background:var(--ink);color:#EADFF6;
+    box-shadow:0 0 0 1px rgba(255,255,255,.08),0 24px 50px rgba(0,0,0,.45)}
+  .prompt i{font-style:normal;color:var(--mint)}
+  .result{left:868px;top:62px;font-size:18px;transform:rotate(2.5deg);background:var(--paper);color:var(--ink);
+    box-shadow:0 26px 60px rgba(10,0,25,.55)}
+  .result .k{color:#7A3FA6}.result .s{color:#1F8A74}
+  svg.scene{position:absolute;inset:0}
 </style></head><body>
-<div class="accent"></div>
-<div class="wrap">
-  <div class="mark"><svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="49" cy="76" r="22" fill="none" stroke="#9750C4" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M71 98 V54 Q71 30 91 30 Q99 30 103 36 L115 44 L101 50" fill="none" stroke="#9750C4" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M27 70 L13 60" fill="none" stroke="#9750C4" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="87" cy="44" r="5" fill="#9750C4"/></svg></div>
-  <div>
-    <h1>Agybird</h1>
-    <p class="tag">Delegate work to the Antigravity CLI you already use.</p>
-  </div>
+<svg class="scene" width="1280" height="640" viewBox="0 0 1280 640" xmlns="http://www.w3.org/2000/svg">
+  <path d="M752 444 C 742 418, 738 396, 744 374" fill="none" stroke="#7FE2CE" stroke-width="4" stroke-linecap="round" stroke-dasharray="1 15" opacity=".8"/>
+  <g transform="translate(696 222) scale(1.38)">
+    <circle cx="49" cy="76" r="22" fill="none" stroke="#7FE2CE" stroke-width="10" stroke-linecap="round"/>
+    <path d="M71 98 V54 Q71 30 91 30 Q99 30 103 36 L115 44 L101 50" fill="none" stroke="#7FE2CE" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M27 70 L13 60" fill="none" stroke="#7FE2CE" stroke-width="9" stroke-linecap="round"/>
+    <circle cx="87" cy="44" r="5" fill="#7FE2CE"/>
+  </g>
+</svg>
+<div class="copy">
+  <h1>Agybird</h1>
+  <p class="tag">Delegate work to the<br>Antigravity CLI you already use.</p>
 </div>
-<div class="meta"><span><b>Claude Code</b> &amp; <b>Codex</b> plugin · MIT · Unofficial</span><span>github.com/fioenix/agybird</span></div>
+<div class="foot">A plugin for <b>Claude Code</b> and <b>Codex</b><br>MIT licensed, unofficial, github.com/fioenix/agybird</div>
+<div class="card prompt"><i>›</i> Use agy to review this repo,
+  read-only, and cite the lines.</div>
+<div class="card result">{
+  <span class="k">"status"</span>: <span class="s">"success"</span>,
+  <span class="k">"evidence"</span>: {
+    <span class="k">"session_resumed"</span>: true
+  }
+}</div>
 </body></html>
