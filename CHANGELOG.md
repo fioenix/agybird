@@ -2,9 +2,14 @@
 
 All notable changes to Agybird are documented in this file.
 
-## Unreleased
+## 0.3.0 - 2026-10-20
 
-- Changed the Codex marketplace machine identity (`name` in `.agents/plugins/marketplace.json`) from `agybird` to exact-case `Finolabs`, updating the shared Codex plugin selectors to `agybird@Finolabs`, `vietnamizer@Finolabs`, and `markmap-skills@Finolabs` while keeping the Claude Code marketplace identity (`agybird`) unchanged. Existing `@agybird` users should migrate by registering a distinct local checkout side-by-side and verifying all three `@Finolabs` plugins before removing the old `@agybird` selectors and `agybird` marketplace (with selective rollback available via `codex plugin marketplace add fioenix/agybird --ref v0.2.1`; see `README.md`).
+**Breaking for Codex users.** The Codex marketplace is now named `Finolabs`; existing `@agybird` Codex installs need the [migration guide](docs/migration.md). Claude Code installs are unaffected.
+
+- Changed the Codex marketplace machine identity (`name` in `.agents/plugins/marketplace.json`) from `agybird` to exact-case `Finolabs`, updating the shared Codex plugin selectors to `agybird@Finolabs`, `vietnamizer@Finolabs`, and `markmap-skills@Finolabs` while keeping the Claude Code marketplace identity (`agybird`) unchanged. Existing `@agybird` users should migrate by registering a distinct local checkout side-by-side and verifying all three `@Finolabs` plugins before removing the old `@agybird` selectors and `agybird` marketplace (with selective rollback available via `codex plugin marketplace add fioenix/agybird --ref v0.2.1`; see `docs/migration.md`).
+- Moved the Codex migration and rollback steps from the README to `docs/migration.md`, and stated the `agy` version the runner was verified against.
+- Moved the original design and implementation plan to `docs/history/`.
+- Added a Dependabot configuration that keeps the SHA-pinned GitHub Actions current.
 
 ## 0.2.1 - 2026-10-19
 
