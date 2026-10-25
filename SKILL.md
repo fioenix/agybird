@@ -22,7 +22,7 @@ Use the official Antigravity CLI as a delegated worker while keeping its authent
 ## Core workflow
 
 1. Resolve this skill's absolute directory and verify Node.js 20 or newer.
-2. Check `agy --version`. If `agy` is missing, pause and ask for confirmation before using an official installer.
+2. Check `agy --version`. If `agy` is missing, stop and direct the user to official setup; do not run installation commands.
 3. Infer `read` or `write` from the user's requested outcome. Default to `read` when inspection can satisfy the request.
 4. Invoke `scripts/agybird.mjs` with an absolute `--cwd` and send the task through standard input. Add `--new-session` on the first run of a new objective, and never on a follow-up.
 5. Inspect the normalized result envelope. Treat `partial`, `needs_permission`, `blocked`, and `error` as distinct outcomes; do not describe them as success.
