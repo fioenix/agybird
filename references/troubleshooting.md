@@ -2,27 +2,12 @@
 
 ## `agy` is missing
 
-Ask the user for confirmation before installing anything. Present numbered choices when a choice is needed. After confirmation, use only the official command for the current operating system:
+If `agy` is not found on PATH, stop. Do not execute installation commands, shell scripts, or download recipes. Direct the user to complete official setup:
 
-macOS or Linux:
+- Official install guide: [https://antigravity.google/docs/cli/install](https://antigravity.google/docs/cli/install)
+- Prerequisites: Node.js 20 or newer, and the official `agy` executable on PATH authenticated by the user.
 
-```bash
-curl -fsSL https://antigravity.google/cli/install.sh | bash
-```
-
-Windows PowerShell:
-
-```powershell
-irm https://antigravity.google/cli/install.ps1 | iex
-```
-
-Windows Command Prompt:
-
-```cmd
-curl -fsSL https://antigravity.google/cli/install.cmd -o install.cmd && install.cmd && del install.cmd
-```
-
-Then resolve `agy` from PATH and rerun `agy --version`. See the official [install guide](https://antigravity.google/docs/cli/install).
+Once the user completes setup and adds `agy` to PATH, verify with `agy --version` and resume.
 
 ## Authentication is missing or expired
 

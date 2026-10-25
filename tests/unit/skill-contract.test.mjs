@@ -40,11 +40,17 @@ test('requires prompt-via-stdin invocation and preserves provider controls', () 
   assert.match(common, /never/i);
 });
 
-test('documents confirm-before-install and cached-auth recovery', () => {
+test('documents missing CLI stop-and-direct guidance without installer recipes', () => {
   const troubleshooting = read('references/troubleshooting.md');
-  assert.match(troubleshooting, /ask.*confirm|confirmation/i);
-  assert.match(troubleshooting, /curl -fsSL https:\/\/antigravity\.google\/cli\/install\.sh \| bash/);
-  assert.match(troubleshooting, /irm https:\/\/antigravity\.google\/cli\/install\.ps1 \| iex/);
+  const skill = read('SKILL.md');
+  assert.match(troubleshooting, /stop/i);
+  assert.match(troubleshooting, /https:\/\/antigravity\.google\/docs\/cli\/install/);
+  assert.match(skill, /stop and direct the user to official setup/i);
+  for (const doc of [troubleshooting, skill]) {
+    assert.doesNotMatch(doc, /curl\s+-[^\n|]*\|\s*bash/i);
+    assert.doesNotMatch(doc, /irm\s+[^\n|]*\|\s*iex/i);
+    assert.doesNotMatch(doc, /install\.cmd/i);
+  }
   assert.match(troubleshooting, /interactive `agy`|run `agy` interactively/i);
   assert.match(troubleshooting, /cached/i);
 });

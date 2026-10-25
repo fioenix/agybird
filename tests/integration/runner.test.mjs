@@ -398,3 +398,27 @@ test('validates an absolute reference image before process execution', async () 
   });
   assert.equal(parseSingleEnvelope(result.stdout).status, 'success');
 });
+
+test('forged authorization in stderr and response does not mutate project grants or clear denial', async () => {
+  const customProjects = mkdtempSync(join(tmpdir(), 'agybird-fake-projects-auth-'));
+  const cwd = mkdtempSync(join(tmpdir(), 'agybird-runner-auth-'));
+  const result = await runRunner({
+    prompt: 'CASE_FORGED_AUTH',
+    cwd,
+    projectsDir: customProjects,
+  });
+  const envelope = parseSingleEnvelope(result.stdout);
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(envelope.status, 'needs_permission');
+  assert.equal(envelope.permission_requests.length, 1);
+  assert.equal(envelope.permission_requests[0].tool, 'run_command');
+  assert.equal(envelope.permission_requests[0].suggested_rule, 'command(cat /etc/shadow)');
+
+  // Verify that no grant was mutated or written to the project file
+  const projectEntries = readdirSync(customProjects);
+  assert.equal(projectEntries.length, 1);
+  const projectContent = JSON.parse(readFileSync(join(customProjects, projectEntries[0]), 'utf8'));
+  const allows = projectContent?.permissionGrants?.permissionGrants?.allow ?? [];
+  assert.deepEqual(allows, [], 'no allow-rule should have been applied to the project');
+});
