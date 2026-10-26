@@ -100,7 +100,7 @@ Prefer the narrowest target that unblocks the task. `read_file` on a repository 
 
 ## Quota or credits are blocked
 
-Report the quota result. Do not modify `useG1Credits` automatically. Ask for explicit confirmation before changing that preference, because it changes which paid allowance bears the cost. See the official [credits guide](https://antigravity.google/docs/cli/credits).
+Check `agy -p /usage` and fall back to an equivalent model as [models.md](models.md) describes. When no equivalent pool has quota, report the quota result and reset times. Do not modify `useG1Credits` automatically. Ask for explicit confirmation before changing that preference, because it changes which paid allowance bears the cost. See the official [credits guide](https://antigravity.google/docs/cli/credits).
 
 ## Stream or artifact validation fails
 

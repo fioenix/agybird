@@ -109,7 +109,7 @@ Agybird has no server, analytics, or telemetry. The runner starts one local `agy
 - No token, keychain, browser-session, or private-endpoint access.
 - No shell execution inside the runner and zero runtime dependencies.
 - No `--dangerously-skip-permissions`.
-- No automatic change to `useG1Credits`, model, effort, agent, or sandbox.
+- No change to the saved `useG1Credits`, model, effort, agent, or sandbox settings. The model is chosen per run by task and remaining quota; see [model selection](references/models.md).
 - Image success requires a completed tool event and a real nonempty artifact in the working directory or the matching Antigravity conversation artifact directory.
 
 See the [threat model](docs/threat-model.md), [security policy](SECURITY.md), and [official Antigravity overview](https://antigravity.google/docs/cli/overview).

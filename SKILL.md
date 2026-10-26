@@ -15,9 +15,10 @@ Use the official Antigravity CLI as a delegated worker while keeping its authent
    - Read [references/code.md](references/code.md) for repository inspection, implementation, debugging, refactoring, or tests.
    - Read [references/image.md](references/image.md) for generating a new image or editing reference images.
    - Read [references/general.md](references/general.md) for analysis, research over local context, structured output, or non-code deliverables.
-3. Read [references/security.md](references/security.md) before any write-mode or sensitive-repository task.
-4. Read [references/troubleshooting.md](references/troubleshooting.md) only when `agy` is missing, authentication fails, permissions block work, quota is exhausted, or output cannot be parsed.
-5. Read [references/docs.md](references/docs.md) when deep or specialized official Antigravity documentation is needed.
+3. Read [references/models.md](references/models.md) before the first run of a new objective that is not image work, and after any run that ends in `error`.
+4. Read [references/security.md](references/security.md) before any write-mode or sensitive-repository task.
+5. Read [references/troubleshooting.md](references/troubleshooting.md) only when `agy` is missing, authentication fails, permissions block work, quota is exhausted, or output cannot be parsed.
+6. Read [references/docs.md](references/docs.md) when deep or specialized official Antigravity documentation is needed.
 
 ## Core workflow
 
@@ -30,4 +31,4 @@ Use the official Antigravity CLI as a delegated worker while keeping its authent
 7. On `needs_permission`, put the request in front of the user and wait. Never grant a permission on the user's behalf. Once approved, run again with `--grant` and let the session resume rather than starting over.
 8. Independently verify the result according to the selected category.
 
-Do not change model, effort, agent, sandbox, or credit settings unless the user explicitly asks for that exact change. Never bypass Antigravity permissions.
+Choose the model per run with `--model` as [references/models.md](references/models.md) describes: the lowest tier that fits, in a pool that still has quota. A model or reasoning level the user asks for wins, even in their own words such as "use a stronger model" or "think harder"; state the chosen value and never persist it. Pass `--agent` or `--sandbox` only when the user explicitly asks for that exact override. Never change `useG1Credits` or any other credit policy without the user's explicit approval. Never bypass Antigravity permissions.
