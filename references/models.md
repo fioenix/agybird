@@ -30,7 +30,7 @@ Start at Light or Standard. Move up a tier only when the task clearly needs it o
 
 ## Fall back when quota runs out
 
-The docs describe no automatic model fallback, and the error for an exhausted quota is not documented. After an `error` (including exit code 3), run `agy -p /usage` and check whether the chosen model's pool is at 0%.
+The docs describe no automatic model fallback, and the error for an exhausted quota is not documented. After an `error` (including exit code 3), run `agy -p /usage` and check whether any limit covering the chosen model is at 0%: its shared pool's five-hour and weekly limits, and any limit of its own, such as Gemini 4 Argon's weekly limit.
 
 1. If the model was your choice, switch to a model of the same tier in a pool that still has quota, rerun, and tell the user which model you switched to and why. Prefer the same conversation; passing a different `--model` on a resumed conversation has not been verified live, so check the result rather than assuming it worked.
 2. If no pool has quota at the same tier, do not silently move up a tier, because that spends more. Report the reset times and ask whether to wait, take a lower tier, or take a higher one.
