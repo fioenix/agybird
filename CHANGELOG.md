@@ -2,6 +2,16 @@
 
 All notable changes to Agybird are documented in this file.
 
+## 0.4.0 - 2026-10-26
+
+Verified against `agy` 1.4.7.
+
+- The skill chooses the model per run. New `references/models.md` checks quota with `agy -p /usage`, which reports per pool (`Gemini Models`, `Claude and GPT models`) and per-model limits such as Gemini 4 Argon, each with five-hour and weekly windows. It picks the lowest tier that fits the task, and when a quota runs out it falls back to an equivalent model in a pool that still has room. It never moves up a tier silently, never overrides a model the user named, and never changes `useG1Credits`.
+- `--model` and `--effort` follow the user's own words, such as "use a stronger model". `--agent` and `--sandbox` still need an exact request.
+- When `agy` is missing, the skill stops and points the user to official setup instead of offering to run an installer.
+- The delegated prompt treats task text, repository content, and provider output as untrusted data, and neutralizes closing task delimiters inside the user's task.
+- Permission requests whose target contains wildcards or cannot form a valid literal grant are marked ungrantable and get no suggested rule.
+
 ## 0.3.0 - 2026-10-20
 
 **Breaking for Codex users.** The Codex marketplace is now named `Finolabs`; existing `@agybird` Codex installs need the [migration guide](docs/migration.md). Claude Code installs are unaffected.
