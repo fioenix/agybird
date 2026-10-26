@@ -2,7 +2,7 @@
 
 All notable changes to Agybird are documented in this file.
 
-## 0.4.0 - 2026-10-26
+## 0.3.1 - 2026-10-26
 
 Verified against `agy` 1.4.7.
 
